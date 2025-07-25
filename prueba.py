@@ -210,7 +210,12 @@ elif st.session_state.step == 3:
 
     geojson_text = json.dumps(manzanas_geojson)
 
-    # 4. Inyectar HTML y JavaScript
+    # 4. Calcular el centro del mapa
+    bounds = manzanas_sel.total_bounds
+    center_lat = (bounds[1] + bounds[3]) / 2
+    center_lon = (bounds[0] + bounds[2]) / 2
+
+    # 5. Inyectar HTML y JavaScript
     components.html(f"""
         <div id="map" style="height: 500px;"></div>
         <p><b>🔎 Código de la manzana seleccionada (¡copia este valor!):</b></p>
@@ -220,7 +225,7 @@ elif st.session_state.step == 3:
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
 
         <script>
-            const map = L.map('map').setView([{center['lat']}, {center['lon']}], 13);
+            const map = L.map('map').setView([{center_lat}], [{center_lon}], 13);
             L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
                 maxZoom: 18,
                 attribution: '© OpenStreetMap contributors'
@@ -264,7 +269,7 @@ elif st.session_state.step == 3:
                 
             }}
 
-            const geojson = L.geoJson(manzanas, {{
+            const geojson = L.geoJSON(manzanas, {{
                 style: style,
                 onEachFeature: onEachFeature
             }}).addTo(map);
@@ -273,27 +278,27 @@ elif st.session_state.step == 3:
         </script>
     """, height=620)
 
-        # Confirmación manual (el usuario copia el valor)
+    # Confirmación manual (el usuario copia el valor)
     manzana_input = st.text_input("✅ Pega aquí el código de la manzana seleccionada para confirmar:")
 
     if st.button("✅ Confirmar Manzana Seleccionada"):
-            if manzana_input:
-                st.session_state.manzana_sel = manzana_input
-                st.session_state.manzanas_localidad_sel = manzanas_sel
-                st.session_state.step = 4
-                st.rerun()
-            else:
-                st.warning("Debes pegar el código de la manzana seleccionada.")
+        if manzana_input:
+            st.session_state.manzana_sel = manzana_input
+            st.session_state.manzanas_localidad_sel = manzanas_sel
+            st.session_state.step = 4
+            st.rerun()
+        else:
+            st.warning("Debes pegar el código de la manzana seleccionada.")
 
     col1, col2 = st.columns(2)
     with col1:
-            if st.button("🔙 Volver a Selección de Localidad"):
-                st.session_state.step = 2
-                st.rerun()
+        if st.button("🔙 Volver a Selección de Localidad"):
+            st.session_state.step = 2
+            st.rerun()
     with col2:
-            if st.button("🔄 Volver al Inicio"):
-                st.session_state.step = 1
-                st.rerun()
+        if st.button("🔄 Volver al Inicio"):
+            st.session_state.step = 1
+            st.rerun()
 ### OJO CON ESTE CAMBIO
     st.session_state.manzanas_localidad_sel = manzanas_sel
     st.session_state.color_map = color_map
