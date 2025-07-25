@@ -148,106 +148,133 @@ elif st.session_state.step == 2:
 
 # --- Bloque 3: Selección de Manzana ---
 # --- Bloque 3: Selección de Manzana ---
-# --- Bloque 3: Selección de Manzana con Copia Manual (CON DEPURACIÓN) ---
 # --- Bloque 3: Selección de Manzana con Copia Manual ---
 elif st.session_state.step == 3:
     st.subheader(f"🏘️ Análisis y Selección de Manzana en {st.session_state.localidad_sel}")
+
+    import streamlit.components.v1 as components
+    import geopandas as gpd
+    import plotly.express as px
+    import json
+    import plotly.io as pio
+    from io import BytesIO
 
     localidades = st.session_state.localidades
     areas = st.session_state.areas
     manzanas = st.session_state.manzanas
     localidad_sel = st.session_state.localidad_sel
 
-    # 1. Filtrar Manzanas por Localidad
-    cod_localidad_series = localidades[localidades["nombre_localidad"] == localidad_sel]["num_localidad"]
-    if cod_localidad_series.empty:
-        st.error(f"No se pudo encontrar el código para la localidad '{localidad_sel}'.")
-        st.stop()
-    cod_localidad = cod_localidad_series.values[0]
+    # --- Primer mapa (Plotly): Localidad resaltada ---
+    st.markdown("### 🗺️ Localidad Seleccionada (Mapa de Referencia)")
+    localidades["seleccionada"] = localidades["nombre_localidad"] == localidad_sel
+    bounds = localidades[localidades["seleccionada"]].total_bounds
+    center = {"lon": (bounds[0] + bounds[2]) / 2, "lat": (bounds[1] + bounds[3]) / 2}
+
+    fig_localidad = px.choropleth_mapbox(
+        localidades,
+        geojson=localidades.geometry,
+        locations=localidades.index,
+        color="seleccionada",
+        color_discrete_map={True: "red", False: "lightgray"},
+        hover_name="nombre_localidad",
+        mapbox_style="carto-positron",
+        center=center,
+        zoom=10
+    )
+    fig_localidad.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+    st.plotly_chart(fig_localidad, use_container_width=True)
+
+    # Guardar imagen del mapa de localidad para el informe
+    buffer_localidad = BytesIO()
+    pio.write_image(fig_localidad, buffer_localidad, format='png')
+    st.session_state.buffer_localidad = buffer_localidad
+
+    # --- Preparación de manzanas + colores ---
+    areas_sel = areas[areas["num_localidad"] == cod_localidad].copy()
     manzanas_sel = manzanas[manzanas["num_localidad"] == cod_localidad].copy()
 
     if manzanas_sel.empty:
         st.warning("⚠️ No se encontraron manzanas para la localidad seleccionada.")
-        st.stop()
-
-    # 2. Mapa de Colores para Usos de Suelo
-    areas_sel = areas[areas["num_localidad"] == cod_localidad].copy()
-
-    if not areas_sel.empty:
-        manzanas_sel = manzanas_sel.merge(
-            areas_sel[["id_area", "uso_pot_simplificado"]],
-            on="id_area",
-            how="left"
-        )
+        if st.button("🔙 Volver a Selección de Localidad"):
+            st.session_state.step = 2
+            st.rerun()
     else:
-        manzanas_sel["uso_pot_simplificado"] = "Sin clasificación"
+        st.markdown("""
+        ### 🖱️ Haz clic sobre la manzana para seleccionarla
+        ✅ El código de la manzana seleccionada aparecerá en la caja de abajo
+        ✅ ¡Copia el código y pégalo en el campo para confirmar!
+        """)
 
-    manzanas_sel["uso_pot_simplificado"] = manzanas_sel["uso_pot_simplificado"].fillna("Sin clasificación")
+        if not areas_sel.empty:
+            manzanas_sel = manzanas_sel.merge(
+                areas_sel[["id_area", "uso_pot_simplificado"]],
+                on="id_area",
+                how="left"
+            )
+        else:
+            manzanas_sel["uso_pot_simplificado"] = "Sin clasificación"
 
-    cats = manzanas_sel["uso_pot_simplificado"].unique().tolist()
-    palette = px.colors.qualitative.Plotly
-    color_map = {cat: palette[i % len(palette)] for i, cat in enumerate(cats)}
-    if "Sin clasificación" not in color_map:
-        color_map["Sin clasificación"] = "#2b2b2b"
+        manzanas_sel["uso_pot_simplificado"] = manzanas_sel["uso_pot_simplificado"].fillna("Sin clasificación")
 
-    manzanas_sel["color"] = manzanas_sel["uso_pot_simplificado"].apply(lambda x: color_map.get(x, "#2b2b2b"))
+        cats = manzanas_sel["uso_pot_simplificado"].unique().tolist()
+        palette = px.colors.qualitative.Plotly
+        color_map = {cat: palette[i % len(palette)] for i, cat in enumerate(cats)}
+        if "Sin clasificación" not in color_map:
+            color_map["Sin clasificación"] = "#2b2b2b"
 
-    # 3. Construir el GeoJSON con color y preparar mapa
-    manzanas_features = []
-    for _, row in manzanas_sel.iterrows():
-        manzanas_features.append({
-            "type": "Feature",
-            "geometry": json.loads(gpd.GeoSeries([row["geometry"]]).to_json())["features"][0]["geometry"],
-            "properties": {
-                "id_manzana_unif": row["id_manzana_unif"],
-                "color": row["color"]
-            }
-        })
+        manzanas_sel["color"] = manzanas_sel["uso_pot_simplificado"].apply(lambda x: color_map.get(x, "#2b2b2b"))
 
-    manzanas_geojson = {
-        "type": "FeatureCollection",
-        "features": manzanas_features
-    }
+        # Construir el GeoJSON con color y preparar mapa
+        manzanas_features = []
+        for _, row in manzanas_sel.iterrows():
+            manzanas_features.append({
+                "type": "Feature",
+                "geometry": json.loads(gpd.GeoSeries([row["geometry"]]).to_json())["features"][0]["geometry"],
+                "properties": {
+                    "id_manzana_unif": row["id_manzana_unif"],
+                    "color": row["color"]
+                }
+            })
 
-    geojson_text = json.dumps(manzanas_geojson)
+        manzanas_geojson = {
+            "type": "FeatureCollection",
+            "features": manzanas_features
+        }
 
-    # 4. Calcular el centro del mapa
-    bounds = manzanas_sel.total_bounds
-    center = {"lon": (bounds[0] + bounds[2]) / 2, "lat": (bounds[1] + bounds[3]) / 2}
+        geojson_text = json.dumps(manzanas_geojson)
 
-    # 5. Inyectar HTML y JavaScript
-    components.html(f"""
-        <div id="map" style="height: 500px;"></div>
-        <p><b>🔎 Código de la manzana seleccionada (¡copia este valor!):</b></p>
-        <input type="text" id="selected_id_input" value="" style="width: 100%; padding: 5px;" readonly>
+        # Mostrar mapa y caja HTML
+        components.html(f"""
+            <div id="map" style="height: 500px;"></div>
+            <p><b>🔎 Código de la manzana seleccionada (¡copia este valor!):</b></p>
+            <input type="text" id="selected_id_input" value="" style="width: 100%; padding: 5px;" readonly>
 
-        <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+            <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
 
-        <script>
-            const map = L.map('map').setView([{center['lat']}, {center['lon']}], 13);
-            L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-                maxZoom: 18,
-                attribution: '© OpenStreetMap contributors'
-            }}).addTo(map);
+            <script>
+                const map = L.map('map').setView([{center['lat']}, {center['lon']}], 13);
+                L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                    maxZoom: 18,
+                    attribution: '© OpenStreetMap contributors'
+                }}).addTo(map);
 
-            const manzanas = {geojson_text};
+                const manzanas = {geojson_text};
 
-            function style(feature) {{
-                return {{
-                    fillColor: feature.properties.color,
-                    weight: 1,
-                    opacity: 1,
-                    color: 'black',
-                    fillOpacity: 0.5
-                }};
-            }}
+                function style(feature) {{
+                    return {{
+                        fillColor: feature.properties.color,
+                        weight: 1,
+                        opacity: 1,
+                        color: 'black',
+                        fillOpacity: 0.5
+                    }};
+                }}
 
-            function highlightStyle() {{
-                return {{
-                    fillColor: 'orange',
-                    weight: 2,
-                
+                function highlightStyle() {{
+                    return {{
+                        fillColor: 'orange',
+                        weight: 2,
                         color: 'red',
                         fillOpacity: 0.7
                     }};
@@ -266,43 +293,42 @@ elif st.session_state.step == 3:
                             document.getElementById("selected_id_input").value = feature.properties.id_manzana_unif;
                         }}
                     }});
-                layer.bindTooltip("Manzana: " + feature.properties.id_manzana_unif);
-                
-            }}
+                    layer.bindTooltip("Manzana: " + feature.properties.id_manzana_unif);
+                }}
 
-            const geojson = L.geoJSON(manzanas, {{
-                style: style,
-                onEachFeature: onEachFeature
-            }}).addTo(map);
+                const geojson = L.geoJSON(manzanas, {{
+                    style: style,
+                    onEachFeature: onEachFeature
+                }}).addTo(map);
 
-            map.fitBounds(geojson.getBounds());
-        </script>
-    """, height=620)
+                map.fitBounds(geojson.getBounds());
+            </script>
+        """, height=620)
 
-    # Confirmación manual (el usuario copia el valor)
-    manzana_input = st.text_input("✅ Pega aquí el código de la manzana seleccionada para confirmar:")
+        # Confirmación manual (el usuario copia el valor)
+        manzana_input = st.text_input("✅ Pega aquí el código de la manzana seleccionada para confirmar:")
 
-    if st.button("✅ Confirmar Manzana Seleccionada"):
-        if manzana_input:
-            st.session_state.manzana_sel = manzana_input
-            st.session_state.manzanas_localidad_sel = manzanas_sel
-            st.session_state.step = 4
-            st.rerun()
-        else:
-            st.warning("Debes pegar el código de la manzana seleccionada.")
+        if st.button("✅ Confirmar Manzana Seleccionada"):
+            if manzana_input:
+                st.session_state.manzana_sel = manzana_input
+                st.session_state.manzanas_localidad_sel = manzanas_sel
+                st.session_state.step = 4
+                st.rerun()
+            else:
+                st.warning("Debes pegar el código de la manzana seleccionada.")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔙 Volver a Selección de Localidad"):
-            st.session_state.step = 2
-            st.rerun()
-    with col2:
-        if st.button("🔄 Volver al Inicio"):
-            st.session_state.step = 1
-            st.rerun()
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔙 Volver a Selección de Localidad"):
+                st.session_state.step = 2
+                st.rerun()
+        with col2:
+            if st.button("🔄 Volver al Inicio"):
+                st.session_state.step = 1
+                st.rerun()
 ### OJO CON ESTE CAMBIO
-    st.session_state.manzanas_localidad_sel = manzanas_sel
-    st.session_state.color_map = color_map
+        st.session_state.manzanas_localidad_sel = manzanas_sel
+        st.session_state.color_map = color_map
 
 def hexToRgb(hex_color):
     hex_color = hex_color.lstrip('#')
