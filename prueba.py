@@ -99,62 +99,56 @@ elif st.session_state.step == 2:
     st.header("🌆 Selección de Localidad")
     st.markdown("Haz clic en la localidad que te interesa:")
 
-    localidades = st.session_state.localidades  # Obtener el GeoDataFrame
-    if localidades is None:
-        st.error("❌ No se cargaron los datos de las localidades. Por favor, reinicia la aplicación.")
-        st.stop()
+    from streamlit_folium import st_folium
+    import folium
+    from shapely.geometry import Point
+
+    localidades = st.session_state.localidades
 
     bounds = localidades.total_bounds
     center = [(bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2]
 
-    mapa = folium.Map(location=center, zoom_start=10, tiles="CartoDB positron")
+    mapa = folium.Map(location=center, zoom_start=11, tiles="CartoDB positron")
 
-    # Añadir las localidades al mapa
     folium.GeoJson(
         localidades,
-        style_function=lambda feature: {
-            "fillColor": "#3388ff",
-            "color": "black",
-            "weight": 1,
-            "fillOpacity": 0.4,
-        },
-        highlight_function=lambda feature: {
-            "weight": 3,
-            "color": "red",
-        },
-        tooltip=folium.GeoJsonTooltip(fields=["nombre_localidad"], aliases=["Localidad:"], labels=True, sticky=True)
+        style_function=lambda feature: {"fillColor": "#3388ff", "color": "black", "weight": 1, "fillOpacity": 0.2},
+        highlight_function=lambda feature: {"weight": 2, "color": "red"},
+        tooltip=folium.GeoJsonTooltip(fields=["nombre_localidad"], labels=False)
     ).add_to(mapa)
 
-    # Añadir ClickForMarker para capturar las coordenadas del clic
-    folium.plugins.ClickForMarker().add_to(mapa)
+    result = st_folium(mapa, width=700, height=500, returned_objects=["last_clicked"])
 
-    map_data = st_folium(mapa, width=700, height=500, returned_objects=["all_drawings"])
+    st.write("Valor de result:", result)  # Depuración
 
-    # Determinar la localidad seleccionada basándose en la ubicación del marcador
-    if map_data and map_data.get("all_drawings"):
-        last_drawing = map_data["all_drawings"][-1]  # Obtener el último marcador
-        if last_drawing["geometry"]["type"] == "Point":
-            point = Point(last_drawing["geometry"]["coordinates"])
-            for _, row in localidades.iterrows():
-                if row["geometry"].contains(point):
-                    st.session_state.localidad_clic = row["nombre_localidad"]
-                    break
-            else:
-                st.session_state.localidad_clic = None # No se encontró la localidad
+    clicked = result.get("last_clicked")
+    st.write("Valor de clicked:", clicked)  # Depuración
 
-    # Mostrar la localidad seleccionada y el botón de confirmar
-    if "localidad_clic" in st.session_state and st.session_state.localidad_clic:
+    if clicked and "lat" in clicked and "lng" in clicked:
+        punto = Point(clicked["lng"], clicked["lat"])
+        st.write("Valor de punto:", punto)  # Depuración
+        for _, row in st.session_state.localidades.iterrows():
+            if row["geometry"].contains(punto):
+                st.session_state.localidad_clic = row["nombre_localidad"]
+                st.write("Localidad encontrada:", st.session_state.localidad_clic)  # Depuración
+                break
+        else:
+            st.session_state.localidad_clic = None
+            st.write("No se encontró ninguna localidad")  # Depuración
+    else:
+        st.session_state.localidad_clic = None
+        st.write("No se hizo clic en el mapa")  # Depuración
+
+    if "localidad_clic" in st.session_state:
         st.text_input("✅ Localidad seleccionada", value=st.session_state.localidad_clic, disabled=True)
         if st.button("✅ Confirmar selección"):
             st.session_state.localidad_sel = st.session_state.localidad_clic
             st.session_state.step = 3
             st.rerun()
 
-    # Botón para volver al inicio
     if st.button("🔄 Volver al Inicio"):
         st.session_state.step = 1
         st.rerun()
 
-    # Mensaje informativo
     if "localidad_sel" not in st.session_state:
-        st.info("Selecciona una localidad en el mapa y confírmala para continuar.")
+        st.info("Selecciona una localidad y confírmala para continuar.")
