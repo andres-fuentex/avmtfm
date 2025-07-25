@@ -92,18 +92,15 @@ if st.session_state.step == 1:
     else:
         st.error("❌ Error al cargar los datasets. Por favor, revise las URLs o la conexión a Internet.")
 
-
-
 # --- Bloque 2: Selección de Localidad ---
 elif st.session_state.step == 2:
     st.header("🌆 Selección de Localidad")
     st.markdown("Haz clic en la localidad que te interesa:")
 
-    from streamlit_folium import st_folium
-    import folium
-    from shapely.geometry import Point
-
     localidades = st.session_state.localidades
+    if localidades is None:
+        st.error("❌ No se cargaron los datos de las localidades. Por favor, reinicia la aplicación.")
+        st.stop()
 
     bounds = localidades.total_bounds
     center = [(bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2]
@@ -119,27 +116,20 @@ elif st.session_state.step == 2:
 
     result = st_folium(mapa, width=700, height=500, returned_objects=["last_clicked"])
 
-    st.write("Valor de result:", result)  # Depuración
-
     clicked = result.get("last_clicked")
-    st.write("Valor de clicked:", clicked)  # Depuración
-
     if clicked and "lat" in clicked and "lng" in clicked:
         punto = Point(clicked["lng"], clicked["lat"])
-        st.write("Valor de punto:", punto)  # Depuración
         for _, row in st.session_state.localidades.iterrows():
             if row["geometry"].contains(punto):
                 st.session_state.localidad_clic = row["nombre_localidad"]
-                st.write("Localidad encontrada:", st.session_state.localidad_clic)  # Depuración
                 break
         else:
             st.session_state.localidad_clic = None
-            st.write("No se encontró ninguna localidad")  # Depuración
+            st.warning("⚠️ No se encontró ninguna localidad en la ubicación seleccionada.") # Mensaje mejorado
     else:
         st.session_state.localidad_clic = None
-        st.write("No se hizo clic en el mapa")  # Depuración
 
-    if "localidad_clic" in st.session_state:
+    if "localidad_clic" in st.session_state and st.session_state.localidad_clic:
         st.text_input("✅ Localidad seleccionada", value=st.session_state.localidad_clic, disabled=True)
         if st.button("✅ Confirmar selección"):
             st.session_state.localidad_sel = st.session_state.localidad_clic
@@ -152,3 +142,14 @@ elif st.session_state.step == 2:
 
     if "localidad_sel" not in st.session_state:
         st.info("Selecciona una localidad y confírmala para continuar.")
+
+# --- Bloque 3: Selección de Manzana ---
+elif st.session_state.step == 3:
+    st.subheader(f"🏘️ Análisis y Selección de Manzana en {st.session_state.localidad_sel}")
+
+    localidades = st.session_state.localidades
+    areas = st.session_state.areas
+    manzanas = st.session_state.manzanas
+    localidad_sel = st.session_state.localidad_sel
+
+    # (Código para filtrar manzanas por localidad y preparar los datos irá aquí)
