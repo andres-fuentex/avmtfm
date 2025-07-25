@@ -145,6 +145,7 @@ elif st.session_state.step == 2:
 
 # --- Bloque 3: Selección de Manzana ---
 # --- Bloque 3: Selección de Manzana ---
+# --- Bloque 3: Selección de Manzana ---
 elif st.session_state.step == 3:
     st.subheader(f"🏘️ Análisis y Selección de Manzana en {st.session_state.localidad_sel}")
 
@@ -213,12 +214,12 @@ elif st.session_state.step == 3:
     if map_data and map_data.get("last_object_clicked"):
         props = map_data["last_object_clicked"].get("properties", {})
         st.session_state.manzana_clic = props.get("id_manzana_unif")
+        st.write("props", props) #show properties
 
     if "manzana_clic" in st.session_state and st.session_state.manzana_clic:
         st.text_input("✅ Manzana seleccionada (ID):", value=st.session_state.manzana_clic, disabled=True)
         if st.button("✅ Confirmar Manzana y Continuar"):
             st.session_state.manzana_sel = st.session_state.manzana_clic
-            # Almacenar datos para los siguientes pasos
             st.session_state.manzanas_localidad_sel = manzanas_localidad_sel
             st.session_state.step = 4
             st.rerun()
