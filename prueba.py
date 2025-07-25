@@ -347,9 +347,9 @@ elif st.session_state.step == 3:
         st.session_state.manzanas_localidad_sel = manzanas_sel
         st.session_state.color_map = color_map
 
-def hexToRgb(hex_color):
-    hex_color = hex_color.lstrip('#')
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    def hexToRgb(hex_color):
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 
 
