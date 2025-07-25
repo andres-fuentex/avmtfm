@@ -97,209 +97,106 @@ elif st.session_state.step == 2:
     if "localidad_sel" not in st.session_state:
         st.info("Selecciona una localidad y confírmala para continuar.")
 
-
-# --- Bloque 3: Mapa coloreado + Selección práctica con copia manual ---
+# --- Bloque 3: Selección de Manzana con Folium (REEMPLAZO COMPLETO) ---
 elif st.session_state.step == 3:
-    st.subheader(f"🏘️ Análisis y Selección de Manzana en {st.session_state.localidad_sel}")
-
-    import streamlit.components.v1 as components
-    import geopandas as gpd
-    import plotly.express as px
-    import json
+    st.header(f"🏘️ Paso 2: Selección de Manzana en {st.session_state.localidad_sel}")
 
     localidades = st.session_state.localidades
     areas = st.session_state.areas
     manzanas = st.session_state.manzanas
-
     localidad_sel = st.session_state.localidad_sel
-    cod_localidad = localidades[localidades["nombre_localidad"] == localidad_sel]["num_localidad"].values[0]
 
-    # --- Primer mapa (Plotly): Localidad resaltada ---
-    st.markdown("### 🗺️ Localidad Seleccionada (Mapa de Referencia)")
-    localidades["seleccionada"] = localidades["nombre_localidad"] == localidad_sel
-    bounds = localidades[localidades["seleccionada"]].total_bounds
-    center = {"lon": (bounds[0] + bounds[2]) / 2, "lat": (bounds[1] + bounds[3]) / 2}
+    # Filtrar manzanas por localidad
+    cod_localidad_series = localidades[localidades["nombre_localidad"] == localidad_sel]["num_localidad"]
+    if cod_localidad_series.empty:
+        st.error(f"No se pudo encontrar el código para la localidad '{localidad_sel}'.")
+        st.stop()
+    cod_localidad = cod_localidad_series.values[0]
+    manzanas_localidad_sel = manzanas[manzanas["num_localidad"] == cod_localidad].copy()
 
-    fig_localidad = px.choropleth_mapbox(
-        localidades,
-        geojson=localidades.geometry,
-        locations=localidades.index,
-        color="seleccionada",
-        color_discrete_map={True: "red", False: "lightgray"},
-        hover_name="nombre_localidad",
-        mapbox_style="carto-positron",
-        center=center,
-        zoom=10
-    )
-    fig_localidad.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
-    st.plotly_chart(fig_localidad, use_container_width=True)
-    import plotly.io as pio
-    from io import BytesIO
-
-    # Guardar imagen del mapa de localidad para el informe
-    buffer_localidad = BytesIO()
-# Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
-    st.plotly_chart(fig_localidad, use_container_width=True)
-    st.session_state.buffer_localidad = buffer_localidad
-
-    # --- Preparación de manzanas + colores ---
-    areas_sel = areas[areas["num_localidad"] == cod_localidad].copy()
-    manzanas_sel = manzanas[manzanas["num_localidad"] == cod_localidad].copy()
-
-    if manzanas_sel.empty:
+    if manzanas_localidad_sel.empty:
         st.warning("⚠️ No se encontraron manzanas para la localidad seleccionada.")
+        st.stop()
+
+    # Combinar información de áreas (usos de suelo)
+    areas_sel = areas[areas["num_localidad"] == cod_localidad]
+    if not areas_sel.empty:
+        manzanas_localidad_sel = manzanas_localidad_sel.merge(
+            areas_sel[["id_area", "uso_pot_simplificado"]], on="id_area", how="left"
+        )
+    manzanas_localidad_sel["uso_pot_simplificado"] = manzanas_localidad_sel["uso_pot_simplificado"].fillna("Sin clasificación")
+
+    # Crear un mapa de colores para los usos de suelo
+    usos_unicos = manzanas_localidad_sel["uso_pot_simplificado"].unique()
+    palette = px.colors.qualitative.Plotly
+    color_map = {uso: palette[i % len(palette)] for i, uso in enumerate(usos_unicos)}
+    color_map["Sin clasificación"] = "#808080"  # Gris para "Sin clasificación"
+    st.session_state.color_map = color_map
+
+    st.markdown("### 🖱️ Haz clic sobre una manzana para seleccionarla")
+    bounds = manzanas_localidad_sel.total_bounds
+    center = [(bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2]
+    
+    mapa_manzanas = folium.Map(location=center, tiles="CartoDB positron", zoom_start=14)
+
+    # Añadir manzanas al mapa con colores y tooltips
+    folium.GeoJson(
+        manzanas_localidad_sel,
+        style_function=lambda feature: {
+            "fillColor": color_map.get(feature["properties"]["uso_pot_simplificado"], "#808080"),
+            "color": "black",
+            "weight": 1,
+            "fillOpacity": 0.6,
+        },
+        highlight_function=lambda x: {"weight": 3, "color": "#e30613", "fillOpacity": 0.8},
+        tooltip=folium.GeoJsonTooltip(fields=["id_manzana_unif", "uso_pot_simplificado"], aliases=["ID Manzana:", "Uso POT:"])
+    ).add_to(mapa_manzanas)
+    
+    mapa_manzanas.fit_bounds(folium.GeoJson(manzanas_localidad_sel).get_bounds())
+
+    # Capturar la interacción del usuario
+    map_data = st_folium(
+        mapa_manzanas,
+        width=700,
+        height=500,
+        returned_objects=["last_object_clicked"],
+    )
+
+    # Mostrar información de la manzana seleccionada y botón de confirmación
+    if map_data and map_data.get("last_object_clicked"):
+        props = map_data["last_object_clicked"].get("properties", {})
+        st.session_state.manzana_clic = props.get("id_manzana_unif")
+
+    if "manzana_clic" in st.session_state:
+        st.text_input("✅ Manzana seleccionada (ID):", value=st.session_state.manzana_clic, disabled=True)
+        if st.button("✅ Confirmar Manzana y Continuar"):
+            st.session_state.manzana_sel = st.session_state.manzana_clic
+            st.session_state.manzanas_localidad_sel = manzanas_localidad_sel
+            st.session_state.step = 4
+            st.rerun()
+    else:
+        st.info("Haz clic en una manzana del mapa para empezar.")
+
+    # Botones de navegación
+    col1, col2 = st.columns(2)
+    with col1:
         if st.button("🔙 Volver a Selección de Localidad"):
             st.session_state.step = 2
             st.rerun()
-    else:
-    st.markdown(
-        """
-        Se muestra un mapa con las estaciones de transporte público cercanas a la manzana seleccionada.
-        """
-    )
-
-        if not areas_sel.empty:
-            manzanas_sel = manzanas_sel.merge(
-                areas_sel[["id_area", "uso_pot_simplificado"]],
-                on="id_area",
-                how="left"
-            )
-        else:
-            manzanas_sel["uso_pot_simplificado"] = "Sin clasificación"
-
-        manzanas_sel["uso_pot_simplificado"] = manzanas_sel["uso_pot_simplificado"].fillna("Sin clasificación")
-
-        cats = manzanas_sel["uso_pot_simplificado"].unique().tolist()
-        palette = px.colors.qualitative.Plotly
-        color_map = {cat: palette[i % len(palette)] for i, cat in enumerate(cats)}
-        if "Sin clasificación" not in color_map:
-            color_map["Sin clasificación"] = "#2b2b2b"
-
-        manzanas_sel["color"] = manzanas_sel["uso_pot_simplificado"].apply(lambda x: color_map.get(x, "#2b2b2b"))
-
-        # Construir el GeoJSON con color y preparar mapa
-        manzanas_features = []
-        for _, row in manzanas_sel.iterrows():
-            manzanas_features.append({
-                "type": "Feature",
-                "geometry": json.loads(gpd.GeoSeries([row["geometry"]]).to_json())["features"][0]["geometry"],
-                "properties": {
-                    "id_manzana_unif": row["id_manzana_unif"],
-                    "color": row["color"]
-                }
-            })
-
-        manzanas_geojson = {
-            "type": "FeatureCollection",
-            "features": manzanas_features
-        }
-
-        geojson_text = json.dumps(manzanas_geojson)
-
-        # Mostrar mapa y caja HTML
-        components.html(f"""
-            <div id="map" style="height: 500px;"></div>
-            <p><b>🔎 Código de la manzana seleccionada (¡copia este valor!):</b></p>
-            <input type="text" id="selected_id_input" value="" style="width: 100%; padding: 5px;" readonly>
-
-            <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
-
-            <script>
-                const map = L.map('map').setView([{center['lat']}, {center['lon']}], 13);
-                L.tileLayer('https://a.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-                    maxZoom: 18,
-                    attribution: '© OpenStreetMap'
-                }}).addTo(map);
-
-                const manzanas = {geojson_text};
-
-                function style(feature) {{
-                    return {{
-                        fillColor: feature.properties.color,
-                        weight: 1,
-                        opacity: 1,
-                        color: 'black',
-                        fillOpacity: 0.5
-                    }};
-                }}
-
-                function highlightStyle() {{
-                    return {{
-                        fillColor: 'orange',
-                        weight: 2,
-                        color: 'red',
-                        fillOpacity: 0.7
-                    }};
-                }}
-
-                let selectedLayer = null;
-
-                function onEachFeature(feature, layer) {{
-                    layer.on({{
-                        click: function(e) {{
-                            if (selectedLayer) {{
-                                geojson.resetStyle(selectedLayer);
-                            }}
-                            selectedLayer = layer;
-                            layer.setStyle(highlightStyle());
-                            document.getElementById("selected_id_input").value = feature.properties.id_manzana_unif;
-                        }}
-                    }});
-                    layer.bindTooltip("Manzana: " + feature.properties.id_manzana_unif);
-                }}
-
-                const geojson = L.geoJson(manzanas, {{
-                    style: style,
-                    onEachFeature: onEachFeature
-                }}).addTo(map);
-
-                map.fitBounds(geojson.getBounds());
-            </script>
-        """, height=620)
-
-        # Confirmación manual (el usuario copia el valor)
-        manzana_input = st.text_input("✅ Pega aquí el código de la manzana seleccionada para confirmar:")
-
-        if st.button("✅ Confirmar Manzana Seleccionada"):
-            if manzana_input:
-                st.session_state.manzana_sel = manzana_input
-                st.session_state.step = 4
-                st.rerun()
-            else:
-                st.warning("Debes pegar el código de la manzana seleccionada.")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔙 Volver a Selección de Localidad"):
-                st.session_state.step = 2
-                st.rerun()
-        with col2:
-            if st.button("🔄 Volver al Inicio"):
-                st.session_state.step = 1
-                st.rerun()
-### OJO CON ESTE CAMBIO
-        st.session_state.manzanas_localidad_sel = manzanas_sel
-        st.session_state.color_map = color_map
-
-        
+    with col2:
+        if st.button("🔄 Volver al Inicio"):
+            st.session_state.step = 1
+            st.rerun()
 
 # --- Bloque 4: Análisis Espacial de la Manzana Seleccionada ---
 elif st.session_state.step == 4:
     st.subheader("🗺️ Análisis Contextual de la Manzana Seleccionada")
 
-    import geopandas as gpd
-    import plotly.graph_objects as go
-    import pandas as pd
-    from shapely.geometry import MultiPoint, Point
-    from io import BytesIO
-
     manzanas = st.session_state.manzanas
     transporte = st.session_state.transporte
     colegios = st.session_state.colegios
-    localidades = st.session_state.localidades
-
     id_manzana = st.session_state.manzana_sel
+    
     manzana_sel = manzanas[manzanas["id_manzana_unif"] == id_manzana]
 
     if manzana_sel.empty:
@@ -308,126 +205,103 @@ elif st.session_state.step == 4:
             st.session_state.step = 3
             st.rerun()
     else:
-    st.markdown(
-        """
-        Distribución de colegios cercanos según niveles educativos.
-        """
-    )
+        # --- 1. Preparar la Manzana y el Centroide ---
         manzana_proj = manzana_sel.to_crs(epsg=3116)
-        centroide_proj = manzana_proj.geometry.centroid.iloc[0]
-        centroide = gpd.GeoSeries([centroide_proj], crs=3116).to_crs(epsg=4326).iloc[0]
-        lon0, lat0 = centroide.x, centroide.y
+        try:
+            centroide_proj = manzana_proj.geometry.centroid.iloc[0]
+            centroide = gpd.GeoSeries([centroide_proj], crs=3116).to_crs(epsg=4326).iloc[0]
+            lon0, lat0 = centroide.x, centroide.y
+        except Exception as e:
+            st.error(f"Error al calcular el centroide de la manzana: {e}")
+            st.stop()
 
         manzana_wgs = manzana_proj.to_crs(epsg=4326)
         coords_m = list(manzana_wgs.geometry.iloc[0].exterior.coords)
         lon_m, lat_m = zip(*coords_m)
 
+        # --- 2. Contexto de Transporte ---
+        st.markdown("### 🚇 Contexto de Transporte (Buffer 800m)")
         buffer_proj = manzana_proj.buffer(800)
         buffer_wgs = gpd.GeoSeries([buffer_proj.iloc[0]], crs=3116).to_crs(epsg=4326).iloc[0]
         coords_b = list(buffer_wgs.exterior.coords)
         lon_b, lat_b = zip(*coords_b)
 
+        # Crear mapa de transporte
+        fig_transporte = go.Figure()
+        fig_transporte.add_trace(go.Scattermapbox(lon=lon_m, lat=lat_m, mode="lines", fill="toself", fillcolor="rgba(0,128,0,0.3)", line=dict(color="darkgreen", width=2), name="Manzana seleccionada"))
+        fig_transporte.add_trace(go.Scattermapbox(lon=lon_b, lat=lat_b, mode="lines", fill="toself", fillcolor="rgba(255,0,0,0.1)", line=dict(color="red", width=1), name="Buffer 800 m"))
+
         id_combi = manzana_sel["id_combi_acceso"].iloc[0]
-        multipunto = transporte.loc[transporte["id_combi_acceso"] == id_combi, "geometry"].iloc[0]
-        pts = gpd.GeoDataFrame(geometry=list(multipunto.geoms), crs=transporte.crs).to_crs(epsg=4326)
-        lon_p, lat_p = pts.geometry.x, pts.geometry.y
-
-        fig = go.Figure()
-        fig.add_trace(go.Scattermapbox(lon=lon_m, lat=lat_m, mode="lines", fill="toself",
-                                       fillcolor="rgba(0,128,0,0.3)",
-                                       line=dict(color="darkgreen", width=2),
-                                       name="Manzana seleccionada"))
-        fig.add_trace(go.Scattermapbox(lon=lon_b, lat=lat_b, mode="lines", fill="toself",
-                                       fillcolor="rgba(255,0,0,0.1)",
-                                       line=dict(color="red", width=1),
-                                       name="Buffer 800 m"))
-        fig.add_trace(go.Scattermapbox(lon=lon_p, lat=lat_p, mode="markers",
-                                       marker=dict(size=10, color="red"),
-                                       name="Estaciones TM"))
-        fig.update_layout(mapbox=dict(style="carto-positron", center=dict(lon=lon0, lat=lat0), zoom=14),
-                          margin=dict(l=0, r=0, t=40, b=0),
-                          title="Detalle de Manzana con Buffer y Estaciones de TM")
-        st.plotly_chart(fig, use_container_width=True)
-
-        buffer_transporte = BytesIO()
-    # Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
-    st.plotly_chart(fig_pastel, use_container_width=True)
-    st.markdown(
-        """
-        ### 🏫 Contexto Educativo
-        Se muestra un buffer de **1000 metros** alrededor de la manzana seleccionada, resaltando los colegios cercanos.
-        """
-    )
-    )
-    id_colegios = manzana_sel["id_com_colegios"].iloc[0]
-    buffer_proj_edu = manzana_proj.buffer(1000)
-    buffer_wgs_edu = gpd.GeoSeries([buffer_proj_edu.iloc[0]], crs=3116).to_crs(epsg=4326).iloc[0]
-    coords_buff_col = list(buffer_wgs_edu.exterior.coords)
-    lon_buff_col, lat_buff_col = zip(*coords_buff_col)
-    filtered = colegios[colegios["id_com_colegios"] == id_colegios]
-    lon_p_col, lat_p_col = [], []
-    if not filtered.empty:
-        geom = filtered.geometry.iloc[0]
-                geoms = list(geom.geoms)
-            elif isinstance(geom, Point):
-                geoms = [geom]
-            else:
-                try:
-                    geoms = [g for g in geom]
-                except:
-                    geoms = []
-            pts_col = gpd.GeoDataFrame(geometry=geoms, crs=colegios.crs).to_crs(epsg=4326)
-            lon_p_col = pts_col.geometry.x.tolist()
-            lat_p_col = pts_col.geometry.y.tolist()
-
-        fig2 = go.Figure()
-        fig2.add_trace(go.Scattermapbox(lon=lon_m, lat=lat_m, mode="lines", fill="toself",
-                                        fillcolor="rgba(0,128,0,0.3)",
-                                        line=dict(color="darkgreen", width=2),
-                                        name="Manzana seleccionada"))
-        fig2.add_trace(go.Scattermapbox(lon=lon_buff_col, lat=lat_buff_col, mode="lines", fill="toself",
-                                        fillcolor="rgba(0,0,255,0.1)",
-                                        line=dict(color="blue", width=1),
-                                        name="Buffer 1000 m"))
-        if lon_p_col:
-            fig2.add_trace(go.Scattermapbox(lon=lon_p_col, lat=lat_p_col, mode="markers+text",
-                                            marker=dict(size=10, color="blue"),
-                                            textposition="top right",
-                                            name="Colegios cercanos"))
-
-        fig2.update_layout(mapbox=dict(style="carto-positron", center=dict(lon=lon0, lat=lat0), zoom=14),
-                           margin=dict(l=0, r=0, t=40, b=0),
-                           title=f"Manzana {id_manzana} con buffer y colegios cercanos")
-        st.plotly_chart(fig2, use_container_width=True)
-
-        buffer_colegios = BytesIO()
-# Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
-    st.plotly_chart(fig2, use_container_width=True)
-        
-        
+        if pd.notna(id_combi):
+            multipunto = transporte.loc[transporte["id_combi_acceso"] == id_combi, "geometry"]
+            if not multipunto.empty:
+                multipunto_geom = multipunto.iloc[0]
+                if hasattr(multipunto_geom, 'geoms'):  # Check if it's a multi-part geometry
+                    pts = gpd.GeoDataFrame(geometry=list(multipunto_geom.geoms), crs=transporte.crs).to_crs(epsg=4326)
+                    lon_p, lat_p = pts.geometry.x, pts.geometry.y
+                    fig_transporte.add_trace(go.Scattermapbox(lon=lon_p, lat=lat_p, mode="markers", marker=dict(size=10, color="red"), name="Estaciones TM"))
+                else:  # Handle single-point geometry
+                    lon_p, lat_p = multipunto_geom.x, multipunto_geom.y
+                    fig_transporte.add_trace(go.Scattermapbox(lon=[lon_p], lat=[lat_p], mode="markers", marker=dict(size=10, color="red"), name="Estaciones TM"))
 
 
-        # Navegación
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("🔙 Volver a Selección de Manzana"):
-                st.session_state.step = 3
-                st.rerun()
-        with col2:
-            if st.button("🔄 Volver al Inicio"):
-                st.session_state.step = 1
-                st.rerun()
-        with col3:
-            if st.button("➡️ Continuar al Bloque 5"):
-                st.session_state.step = 5
-                st.session_state.buffer_transporte = buffer_transporte
-                st.session_state.buffer_colegios = buffer_colegios
-                st.session_state.manzana_seleccionada_df = manzana_sel
-                st.rerun()
+        fig_transporte.update_layout(mapbox=dict(style="carto-positron", center=dict(lon=lon0, lat=lat0), zoom=14), margin=dict(l=0, r=0, t=40, b=0), title="Detalle de Manzana con Buffer y Estaciones de TM")
+        st.plotly_chart(fig_transporte, use_container_width=True)
+
+        # Guardar imagen de transporte
+        st.session_state.buffer_transporte = BytesIO(pio.to_image(fig_transporte, format='png'))
+
+        # --- 3. Contexto Educativo ---
+        st.markdown("### 🏫 Contexto Educativo (Buffer 1000m)")
+        buffer_proj_edu = manzana_proj.buffer(1000)
+        buffer_wgs_edu = gpd.GeoSeries([buffer_proj_edu.iloc[0]], crs=3116).to_crs(epsg=4326).iloc[0]
+        coords_buff_col = list(buffer_wgs_edu.exterior.coords)
+        lon_buff_col, lat_buff_col = zip(*coords_buff_col)
+
+        # Crear mapa de colegios
+        fig_colegios = go.Figure()
+        fig_colegios.add_trace(go.Scattermapbox(lon=lon_m, lat=lat_m, mode="lines", fill="toself", fillcolor="rgba(0,128,0,0.3)", line=dict(color="darkgreen", width=2), name="Manzana seleccionada"))
+        fig_colegios.add_trace(go.Scattermapbox(lon=lon_buff_col, lat=lat_buff_col, mode="lines", fill="toself", fillcolor="rgba(0,0,255,0.1)", line=dict(color="blue", width=1), name="Buffer 1000 m"))
+
+        id_colegios = manzana_sel["id_com_colegios"].iloc[0]
+        if pd.notna(id_colegios):
+            colegios_filtered = colegios[colegios["id_com_colegios"] == id_colegios]
+            if not colegios_filtered.empty:
+                puntos_colegios = []
+                for geom in colegios_filtered.geometry:
+                  if isinstance(geom, MultiPoint):
+                    puntos_colegios.extend(list(geom.geoms))
+                  elif isinstance(geom, Point):
+                    puntos_colegios.append(geom)
+
+                if puntos_colegios:
+                    pts_col = gpd.GeoDataFrame(geometry=puntos_colegios, crs=colegios.crs).to_crs(epsg=4326)
+                    lon_p_col, lat_p_col = pts_col.geometry.x.tolist(), pts_col.geometry.y.tolist()
+                    fig_colegios.add_trace(go.Scattermapbox(lon=lon_p_col, lat=lat_p_col, mode="markers+text", marker=dict(size=10, color="blue"), textposition="top right", name="Colegios cercanos"))
+
+        fig_colegios.update_layout(mapbox=dict(style="carto-positron", center=dict(lon=lon0, lat=lat0), zoom=14), margin=dict(l=0, r=0, t=40, b=0), title=f"Manzana {id_manzana} con buffer y colegios cercanos")
+        st.plotly_chart(fig_colegios, use_container_width=True)
+
+        # Guardar imagen de colegios
+        st.session_state.buffer_colegios = BytesIO(pio.to_image(fig_colegios, format='png'))
+
+    # Navegación
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("🔙 Volver a Selección de Manzana"):
+            st.session_state.step = 3
+            st.rerun()
+    with col2:
+        if st.button("🔄 Volver al Inicio"):
+            st.session_state.step = 1
+            st.rerun()
+    with col3:
+        if st.button("➡️ Continuar al Análisis Comparativo", disabled=manzana_sel.empty):
+            st.session_state.step = 5
+            st.rerun()
 
 
-# --- Bloque 5: Análisis Comparativo y Proyección del Valor m² ---
-# --- Bloque 5: Análisis Comparativo y Proyección del Valor m² ---
+
 # --- Bloque 5: Análisis Comparativo y Proyección del Valor m² ---
 
 elif st.session_state.step == 5:
@@ -495,7 +369,7 @@ elif st.session_state.step == 5:
     conteo_uso = manzanas_buffer_uso["uso_pot_simplificado"].value_counts().reset_index()
     conteo_uso.columns = ["uso", "cantidad"]
 
-    
+
 
 
     if not conteo_uso.empty:
@@ -524,7 +398,7 @@ elif st.session_state.step == 5:
         st.session_state.uso_pot_mayoritario = uso_pot_mayoritario
     else:
         st.session_state.uso_pot_mayoritario = "Sin clasificación POT"
-    
+
     st.session_state.buffer_mapa_pot = st.session_state.buffer_dist_pot
 
 
@@ -553,7 +427,7 @@ elif st.session_state.step == 5:
     st.session_state.ficha_estilizada = ficha_estilizada
 
 
-    
+
     if not any(pd.isna(serie_proyeccion)):
         fig_line = go.Figure()
         fig_line.add_trace(go.Scatter(x=fechas, y=serie_proyeccion, mode="lines+markers+text", line=dict(color="royalblue", width=3), marker=dict(size=8), text=[f"${v:,.0f}" for v in serie_proyeccion], textposition="top center", textfont=dict(size=14), name="Proyección valor m²"))
@@ -573,10 +447,9 @@ elif st.session_state.step == 5:
         if st.button("➡️ Continuar al Análisis de Seguridad"):
             st.session_state.step = 6
             st.rerun()
-    
 
-# BLOQUE 6 
 
+# --- Bloque 6: Contexto de Seguridad por Localidad ---
 elif st.session_state.step == 6:
     st.subheader("🔎 Contexto de Seguridad por Localidad")
     import plotly.express as px
@@ -589,12 +462,22 @@ elif st.session_state.step == 6:
 
     if manzana_sel.empty:
         st.warning("⚠️ No se encontró información de la manzana seleccionada.")
-        if st.button("🔙 Volver al Bloque Anterior"):
+        if st.button("🔙 Volver al Análisis Comparativo"):
             st.session_state.step = 5
             st.rerun()
     else:
         cod_loc = manzana_sel["num_localidad"].values[0]
 
+        # --- Obtener nombre de localidad y manejar el caso si no existe
+        nombre_loc_series = localidades[localidades["num_localidad"] == cod_loc]["nombre_localidad"]
+        if not nombre_loc_series.empty:
+            nombre_loc_actual = nombre_loc_series.values[0]
+            st.session_state.nombre_localidad = nombre_loc_actual
+        else:
+            st.warning(f"⚠️ No se encontró la localidad con código {cod_loc}. Usando 'Desconocido' como nombre.")
+            nombre_loc_actual = "Desconocido"
+            st.session_state.nombre_localidad = nombre_loc_actual
+            
         df_seguridad = localidades[["nombre_localidad", "num_localidad", "cantidad_delitos", "nivel_riesgo_delictivo"]].copy()
         df_seguridad["es_localidad_actual"] = df_seguridad["num_localidad"] == cod_loc
         df_seguridad["etiqueta"] = df_seguridad.apply(
@@ -624,34 +507,26 @@ elif st.session_state.step == 6:
         fig.update_yaxes(categoryorder="total ascending")
         st.plotly_chart(fig, use_container_width=True)
 
-        st.session_state.buffer_seguridad = BytesIO()
-# Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
-    st.plotly_chart(fig3, use_container_width=True)
+        buffer_seguridad = BytesIO()
+        st.session_state.buffer_seguridad = BytesIO(pio.to_image(fig, format='png')) # Correcto: Guarda la figura en el buffer
         st.session_state.df_seguridad = df_seguridad
 
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("🔙 Volver al Análisis Comparativo"):
+            st.session_state.step = 5
+            st.rerun()
+    with col2:
+        if st.button("➡️ Finalizar y Descargar Informe"):
+            st.session_state.step = 7
+            st.rerun()
+    with col3:
+        if st.button("🔄 Reiniciar App"):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.session_state.step = 1
+            st.rerun()
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("🔙 Volver al Análisis Comparativo"):
-                st.session_state.step = 5
-                st.rerun()
-        with col2:
-            if st.button("➡️ Finalizar y Descargar Informe"):
-                st.session_state.step = 7
-                st.rerun()
-        with col3:
-            if st.button("🔄 Reiniciar App"):
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.session_state.step = 1
-                st.rerun()
-
-        if "nombre_localidad" not in st.session_state:
-            cod_localidad = manzana_sel["num_localidad"].values[0]
-            st.session_state.nombre_localidad = st.session_state.localidades.loc[
-            st.session_state.localidades["num_localidad"] == cod_localidad, "nombre_localidad"
-            ].values[0]
-    
 
 # --- Bloque 7: Generación del Informe Ejecutivo ---
 
@@ -805,7 +680,7 @@ elif st.session_state.step == 7:
             img_localidad_base64 = buffer_a_base64(st.session_state.buffer_localidad)
 
             html_ficha = st.session_state.ficha_estilizada.to_html()
-            
+
 
             titulo = "Informe de Análisis de Inversión Inmobiliaria"
 
@@ -840,7 +715,7 @@ elif st.session_state.step == 7:
                     </div>
                     <div class="text">{texto3}</div>
                     <div class="images">
-                        
+
                         <div class="image"><img src="data:image/png;base64,{img_mapapot_base64}"></div>
                     </div>
                     <div class="text">{texto4}</div>
