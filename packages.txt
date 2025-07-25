@@ -11,3 +11,4 @@ libgdal-dev
 gdal-bin
 xvfb
 chromium
+python3-pip
