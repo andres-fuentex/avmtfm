@@ -703,3 +703,227 @@ elif st.session_state.step == 6:
             st.session_state.nombre_localidad = st.session_state.localidades.loc[
             st.session_state.localidades["num_localidad"] == cod_localidad, "nombre_localidad"
             ].values[0]
+
+            # --- Bloque 7: Generación del Informe Ejecutivo ---
+
+elif st.session_state.step == 7:
+    st.subheader("📑 Generación del Informe Ejecutivo")
+
+    # --- Generación del Mapa de Manzanas para el Informe ---
+    import plotly.express as px
+    import plotly.io as pio
+    from io import BytesIO
+
+    manzanas_localidad = st.session_state.manzanas_localidad_sel.copy()
+    color_map = st.session_state.color_map
+
+    if "uso_pot_simplificado" not in manzanas_localidad.columns:
+        manzanas_localidad["uso_pot_simplificado"] = "Sin clasificación POT"
+
+    bounds_m = manzanas_localidad.total_bounds
+    center_m = {
+        "lon": (bounds_m[0] + bounds_m[2]) / 2,
+        "lat": (bounds_m[1] + bounds_m[3]) / 2
+    }
+
+    fig_manzanas = px.choropleth_mapbox(
+        manzanas_localidad,
+        geojson=manzanas_localidad.geometry,
+        locations=manzanas_localidad.index,
+        color="uso_pot_simplificado",
+        color_discrete_map=color_map,
+        mapbox_style="carto-positron",
+        center=center_m,
+        zoom=12,
+        opacity=0.5,
+        hover_name="id_manzana_unif"
+    )
+
+    fig_manzanas.update_layout(
+        margin=dict(l=0, r=0, t=40, b=0),
+        title="Manzanas seleccionadas para el informe"
+    )
+
+    buffer_manzanas = BytesIO()
+# Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
+    st.plotly_chart(fig_final, use_container_width=True)
+    st.session_state.buffer_manzanas = buffer_manzanas
+
+    # --- Generación del Informe ---
+    with st.spinner('📝 Generando informe...'):
+        import base64
+
+        manzana_id = st.session_state.manzana_sel
+        manzana_sel = st.session_state.manzanas_localidad_sel[
+            st.session_state.manzanas_localidad_sel["id_manzana_unif"] == manzana_id
+        ]
+
+        if manzana_sel.empty:
+            st.error("❌ No se encontró la información de la manzana seleccionada. Por favor vuelve y selecciona.")
+            if st.button("🔙 Volver al Análisis Comparativo"):
+                st.session_state.step = 5
+                st.rerun()
+        else:
+            estrato = int(manzana_sel["estrato"].values[0])
+            id_manzana = manzana_sel["id_manzana_unif"].values[0]
+            nombre_localidad = st.session_state.nombre_localidad
+            colegios = int(manzana_sel["colegio_cerca"].values[0])
+            estaciones = int(manzana_sel["estaciones_cerca"].values[0])
+
+            texto0 = (
+                f"El presente informe ha sido generado automáticamente como parte del trabajo final del Máster en Visual Analytics y Big Data "
+                f"de la Universidad Internacional de La Rioja. Este documento es el resultado del proyecto desarrollado por "
+                f"<strong>Sergio Andrés Fuentes Gómez</strong> y <strong>Miguel Alejandro González</strong>, bajo la dirección de "
+                f"<strong>Mariana Ríos Ortegón</strong>. Forma parte de un piloto experimental orientado a la aplicación práctica de técnicas "
+                f"de análisis visual y ciencia de datos en contextos urbanos reales."
+            )
+
+
+            texto1 = (
+                f"De acuerdo con su selección, la manzana identificada con el código <strong>{id_manzana}</strong>, "
+                f"ubicada en la localidad <strong>{nombre_localidad}</strong>, correspondiente al <strong>estrato {estrato}</strong>, "
+                f"presenta condiciones clave para evaluar su potencial de valorización en el contexto urbano de Bogotá."
+            )
+
+            texto2 = (
+                f"Cuenta con <strong>{colegios} colegios</strong> ubicados a menos de <strong>1.000 metros</strong> y "
+                f"<strong>{estaciones} estaciones de TransMilenio</strong> a menos de <strong>500 metros</strong>. "
+                f"Estos factores evidencian su buena conectividad y acceso a servicios."
+            )
+
+            id_area_manzana = manzana_sel["id_area"].values[0]
+            area_info = st.session_state.areas[st.session_state.areas["id_area"] == id_area_manzana]
+            area_pot = area_info["area_pot"].values[0]
+            uso_pot = area_info["uso_pot_simplificado"].values[0]
+
+            uso_pot_mayoritario = st.session_state.uso_pot_mayoritario
+            valor_area = f"${st.session_state.promedio_area:,.0f}"
+
+            texto3 = (
+                f"Desde el punto de vista normativo, la manzana se encuentra asignada al área denominada "
+                f"<strong>{area_pot}</strong> dentro del marco del <strong>Plan de Ordenamiento Territorial (POT)</strong>. "
+                f"Su uso principal es <strong>{uso_pot}</strong>. En un radio de 500 metros, el uso predominante es "
+                f"<strong>{uso_pot_mayoritario}</strong>. El valor promedio del metro cuadrado en el área POT es de "
+                f"<strong>{valor_area}</strong>."
+            )
+
+            valor_m2 = manzana_sel["valor_m2"].values[0]
+            rentabilidad = manzana_sel["rentabilidad"].values[0]
+            promedio_buffer = float(st.session_state.promedio_buffer)
+
+            texto4 = (
+                f"El valor actual del metro cuadrado es de <strong>${valor_m2:,.0f}</strong>. "
+                f"El promedio en un radio de 300 metros es de <strong>${promedio_buffer:,.0f}</strong>. "
+                f"El valor promedio en el área POT es <strong>{valor_area}</strong>. La rentabilidad estimada es de "
+                f"<strong>{rentabilidad}</strong>."
+            )
+
+            cod_loc = manzana_sel["num_localidad"].values[0]
+            info_seguridad = st.session_state.df_seguridad[st.session_state.df_seguridad["num_localidad"] == cod_loc].iloc[0]
+            nivel_riesgo = info_seguridad["nivel_riesgo_delictivo"]
+            delitos = int(info_seguridad["cantidad_delitos"])
+
+            texto5 = (
+                f"La localidad <strong>{nombre_localidad}</strong> presenta un nivel de riesgo <strong>{nivel_riesgo}</strong> "
+                f"con un total de <strong>{delitos} delitos</strong> reportados."
+            )
+
+            v_2025_1 = manzana_sel["valor_2025_s1"].values[0]
+            v_2025_2 = manzana_sel["valor_2025_s2"].values[0]
+            v_2026_1 = manzana_sel["valor_2026_s1"].values[0]
+            v_2026_2 = manzana_sel["valor_2026_s2"].values[0]
+
+            texto6 = (
+                f"Según las proyecciones, el valor del metro cuadrado podría ser:<br>"
+                f"- 2025-S1: <strong>${v_2025_1:,.0f}</strong><br>"
+                f"- 2025-S2: <strong>${v_2025_2:,.0f}</strong><br>"
+                f"- 2026-S1: <strong>${v_2026_1:,.0f}</strong><br>"
+                f"- 2026-S2: <strong>${v_2026_2:,.0f}</strong><br>"
+            )
+
+            def buffer_a_base64(buffer):
+                buffer.seek(0)
+                return base64.b64encode(buffer.read()).decode('utf-8')
+
+            img_colegios_base64 = buffer_a_base64(st.session_state.buffer_colegios)
+            img_transporte_base64 = buffer_a_base64(st.session_state.buffer_transporte)
+            img_distribucion_base64 = buffer_a_base64(st.session_state.buffer_dist_pot)
+            img_mapapot_base64 = buffer_a_base64(st.session_state.buffer_mapa_pot)
+            img_manzanas_base64 = buffer_a_base64(st.session_state.buffer_manzanas)
+            img_valorm2_base64 = buffer_a_base64(st.session_state.buffer_valorm2)
+            img_seguridad_base64 = buffer_a_base64(st.session_state.buffer_seguridad)
+            img_proyeccion_base64 = buffer_a_base64(st.session_state.buffer_proyeccion)
+            img_localidad_base64 = buffer_a_base64(st.session_state.buffer_localidad)
+
+            html_ficha = st.session_state.ficha_estilizada.to_html()
+
+
+            titulo = "Informe de Análisis de Inversión Inmobiliaria"
+
+            html_content = f"""
+            <!DOCTYPE html>
+            <html lang="es">
+            <head>
+                <meta charset="UTF-8">
+                <title>{titulo}</title>
+                <style>
+                    body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f9f9f9; }}
+                    h1 {{ color: #2c3e50; text-align: center; }}
+                    .container {{ display: flex; flex-direction: column; align-items: center; }}
+                    .text {{ text-align: justify; margin: 20px 0; max-width: 900px; font-size: 16px; color: #333; }}
+                    .images {{ display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; max-width: 900px; margin: 0 auto; }}
+                    .image {{ flex: 1; max-width: 600px; }}
+                    .image img {{ width: 100%; height: auto; border: 1px solid #ccc; box-shadow: 2px 2px 8px rgba(0,0,0,0.1); }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>{titulo}</h1>
+                    <div class="text">{html_ficha}</div>
+                    <div class="text">{texto0}</div>
+                    <div class="images"><div class="image"><img src="data:image/png;base64,{img_localidad_base64}"></div></div>
+                    <div class="text">{texto1}</div>
+                    <div class="images"><div class="image"><img src="data:image/png;base64,{img_manzanas_base64}"></div></div>
+                    <div class="text">{texto2}</div>
+                    <div class="images">
+                        <div class="image"><img src="data:image/png;base64,{img_colegios_base64}"></div>
+                        <div class="image"><img src="data:image/png;base64,{img_transporte_base64}"></div>
+                    </div>
+                    <div class="text">{texto3}</div>
+                    <div class="images">
+
+                        <div class="image"><img src="data:image/png;base64,{img_mapapot_base64}"></div>
+                    </div>
+                    <div class="text">{texto4}</div>
+                    <div class="images"><div class="image"><img src="data:image/png;base64,{img_valorm2_base64}"></div></div>
+                    <div class="text">{texto5}</div>
+                    <div class="images"><div class="image"><img src="data:image/png;base64,{img_seguridad_base64}"></div></div>
+                    <div class="text">{texto6}</div>
+                    <div class="images"><div class="image"><img src="data:image/png;base64,{img_proyeccion_base64}"></div></div>
+                </div>
+            </body>
+            </html>
+            """
+
+            st.session_state.informe_html = html_content
+
+    st.success("✅ Informe generado correctamente.")
+
+    st.download_button(
+        "📥 Descargar Informe (HTML)",
+        data=st.session_state.informe_html,
+        file_name="Informe_Valorizacion.html",
+        mime="text/html"
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔙 Volver al Análisis de Seguridad"):
+            st.session_state.step = 6
+            st.rerun()
+    with col2:
+        if st.button("🔄 Reiniciar Aplicación"):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.session_state.step = 1
+            st.rerun()
