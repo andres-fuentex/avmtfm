@@ -350,3 +350,91 @@ elif st.session_state.step == 3:
 def hexToRgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+
+
+# --- Bloque 4: Análisis Espacial de la Manzana Seleccionada ---
+elif st.session_state.step == 4:
+    st.subheader("🗺️ Análisis Contextual de la Manzana Seleccionada")
+
+    import geopandas as gpd
+    import plotly.graph_objects as go
+    import pandas as pd
+    from shapely.geometry import MultiPoint, Point
+    from io import BytesIO
+
+    manzanas = st.session_state.manzanas
+    transporte = st.session_state.transporte
+    colegios = st.session_state.colegios
+    localidades = st.session_state.localidades
+
+    id_manzana = st.session_state.manzana_sel
+    manzana_sel = manzanas[manzanas["id_manzana_unif"] == id_manzana]
+
+    if manzana_sel.empty:
+        st.warning("⚠️ No se encontraron datos para la manzana seleccionada.")
+        if st.button("🔙 Volver a Selección de Manzana"):
+            st.session_state.step = 3
+            st.rerun()
+    else:
+        st.markdown(
+            """
+            Distribución de colegios cercanos según niveles educativos.
+            """
+        )
+        manzana_proj = manzana_sel.to_crs(epsg=3116)
+        centroide_proj = manzana_proj.geometry.centroid.iloc[0]
+        centroide = gpd.GeoSeries([centroide_proj], crs=3116).to_crs(epsg=4326).iloc[0]
+        lon0, lat0 = centroide.x, centroide.y
+
+        manzana_wgs = manzana_proj.to_crs(epsg=4326)
+        coords_m = list(manzana_wgs.geometry.iloc[0].exterior.coords)
+        lon_m, lat_m = zip(*coords_m)
+
+        buffer_proj = manzana_proj.buffer(800)
+        buffer_wgs = gpd.GeoSeries([buffer_proj.iloc[0]], crs=3116).to_crs(epsg=4326).iloc[0]
+        coords_b = list(buffer_wgs.exterior.coords)
+        lon_b, lat_b = zip(*coords_b)
+
+        id_combi = manzana_sel["id_combi_acceso"].iloc[0]
+        multipunto = transporte.loc[transporte["id_combi_acceso"] == id_combi, "geometry"].iloc[0]
+        pts = gpd.GeoDataFrame(geometry=list(multipunto.geoms), crs=transporte.crs).to_crs(epsg=4326)
+        lon_p, lat_p = pts.geometry.x, pts.geometry.y
+
+        fig = go.Figure()
+        fig.add_trace(go.Scattermapbox(lon=lon_m, lat=lat_m, mode="lines", fill="toself",
+                                        fillcolor="rgba(0,128,0,0.3)",
+                                        line=dict(color="darkgreen", width=2),
+                                        name="Manzana seleccionada"))
+        fig.add_trace(go.Scattermapbox(lon=lon_b, lat=lat_b, mode="lines", fill="toself",
+                                        fillcolor="rgba(255,0,0,0.1)",
+                                        line=dict(color="red", width=1),
+                                        name="Buffer 800 m"))
+        fig.add_trace(go.Scattermapbox(lon=lon_p, lat=lat_p, mode="markers",
+                                        marker=dict(size=10, color="red"),
+                                        name="Estaciones TM"))
+        fig.update_layout(mapbox=dict(style="carto-positron", center=dict(lon=lon0, lat=lat0), zoom=14),
+                        margin=dict(l=0, r=0, t=40, b=0),
+                        title="Detalle de Manzana con Buffer y Estaciones de TM")
+        st.plotly_chart(fig, use_container_width=True)
+
+        buffer_transporte = BytesIO()
+        pio.write_image(fig, buffer_transporte, format='png', engine='kaleido')
+        st.session_state.buffer_transporte = buffer_transporte
+
+        # Navegación
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("🔙 Volver a Selección de Manzana"):
+                st.session_state.step = 3
+                st.rerun()
+        with col2:
+            if st.button("🔄 Volver al Inicio"):
+                st.session_state.step = 1
+                st.rerun()
+        with col3:
+            if st.button("➡️ Continuar al Bloque 5"):
+                st.session_state.step = 5
+                st.session_state.buffer_transporte = buffer_transporte
+                st.session_state.manzana_seleccionada_df = manzana_sel
+                st.rerun()
