@@ -138,7 +138,8 @@ elif st.session_state.step == 3:
 
     # Guardar imagen del mapa de localidad para el informe
     buffer_localidad = BytesIO()
-    pio.write_image(fig_localidad, buffer_localidad, format='png')
+# Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
+st.plotly_chart(fig, use_container_width=True)
     st.session_state.buffer_localidad = buffer_localidad
 
     # --- Preparación de manzanas + colores ---
@@ -349,7 +350,8 @@ elif st.session_state.step == 4:
         st.plotly_chart(fig, use_container_width=True)
 
         buffer_transporte = BytesIO()
-        fig.write_image(buffer_transporte, format='png')
+# Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
+st.plotly_chart(fig_pastel, use_container_width=True)
 
         st.markdown("""
         ### 🏫 Contexto Educativo
@@ -400,7 +402,8 @@ elif st.session_state.step == 4:
         st.plotly_chart(fig2, use_container_width=True)
 
         buffer_colegios = BytesIO()
-        fig2.write_image(buffer_colegios, format='png')
+# Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
+st.plotly_chart(fig2, use_container_width=True)
         
         
 
@@ -623,7 +626,8 @@ elif st.session_state.step == 6:
         st.plotly_chart(fig, use_container_width=True)
 
         st.session_state.buffer_seguridad = BytesIO()
-        fig.write_image(st.session_state.buffer_seguridad, format='png')
+# Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
+st.plotly_chart(fig3, use_container_width=True)
         st.session_state.df_seguridad = df_seguridad
 
 
@@ -691,7 +695,8 @@ elif st.session_state.step == 7:
     )
 
     buffer_manzanas = BytesIO()
-    pio.write_image(fig_manzanas, buffer_manzanas, format='png')
+# Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
+st.plotly_chart(fig_final, use_container_width=True)
     st.session_state.buffer_manzanas = buffer_manzanas
 
     # --- Generación del Informe ---
