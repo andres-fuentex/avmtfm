@@ -478,3 +478,152 @@ elif st.session_state.step == 4:
             st.session_state.buffer_colegios = buffer_img_colegios
             st.session_state.manzana_seleccionada_df = manzana_sel
             st.rerun()
+
+            # --- Bloque 5: Análisis Comparativo y Proyección del Valor m² ---
+elif st.session_state.step == 5:
+    st.subheader("📊 Análisis Comparativo y Proyección del Valor m²")
+
+    import pandas as pd
+    from io import BytesIO
+    import plotly.express as px
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    localidades = st.session_state.localidades
+    manzanas = st.session_state.manzanas
+    areas = st.session_state.areas
+    manzana_id = st.session_state.manzana_sel
+    if "colegios" in st.session_state:
+        colegios = st.session_state.colegios
+    if "transporte" in st.session_state:
+        transporte = st.session_state.transporte
+
+    manzanas_sel = st.session_state.manzanas_localidad_sel.copy()
+    color_map = st.session_state.color_map
+    manzana_sel = manzanas_sel[manzanas_sel["id_manzana_unif"] == manzana_id]
+
+    if "uso_pot_simplificado_y" in manzanas_sel.columns and "uso_pot_simplificado_x" in manzanas_sel.columns:
+        manzanas_sel["uso_pot_simplificado"] = manzanas_sel["uso_pot_simplificado_y"].combine_first(manzanas_sel["uso_pot_simplificado_x"]).fillna("Sin clasificación POT")
+    elif "uso_pot_simplificado" in manzanas_sel.columns:
+        manzanas_sel["uso_pot_simplificado"] = manzanas_sel["uso_pot_simplificado"].fillna("Sin clasificación POT")
+    else:
+        manzanas_sel["uso_pot_simplificado"] = "Sin clasificación POT"
+
+    cod_localidad = manzana_sel["num_localidad"].values[0]
+    nombre_localidad = localidades.loc[localidades["num_localidad"] == cod_localidad, "nombre_localidad"].values[0]
+
+    st.markdown("### 📈 Comparativo de valor m²")
+
+    id_area_manzana = manzana_sel["id_area"].values[0]
+
+    if pd.notna(id_area_manzana):
+        manzanas_area = manzanas_sel[manzanas_sel["id_area"] == id_area_manzana]
+    else:
+        manzanas_area = manzanas_sel[manzanas_sel["id_area"].isna()]
+
+    promedio_area = manzanas_area["valor_m2"].mean() if not manzanas_area.empty else 0
+    valor_manzana = manzana_sel["valor_m2"].values[0]
+
+    buffer_300 = manzana_sel.to_crs(epsg=3116).buffer(300).to_crs(epsg=4326)
+    manzanas_buffer = manzanas_sel[manzanas_sel.geometry.intersects(buffer_300.iloc[0])]
+    promedio_buffer = manzanas_buffer["valor_m2"].mean() if not manzanas_buffer.empty else 0
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=["Manzana seleccionada"], y=[valor_manzana], text=[f"${valor_manzana:,.0f}"], textposition="outside", marker_color='rgba(0, 102, 204, 0.8)'))
+    fig.add_trace(go.Bar(x=["Promedio área POT"] if pd.notna(id_area_manzana) else ["Promedio sin área"], y=[promedio_area], text=[f"${promedio_area:,.0f}"], textposition="outside", marker_color='rgba(0, 102, 204, 0.6)'))
+    fig.add_trace(go.Bar(x=["Promedio 300m"], y=[promedio_buffer], text=[f"${promedio_buffer:,.0f}"], textposition="outside", marker_color='rgba(0, 102, 204, 0.4)'))
+
+    fig.update_layout(title="Comparativo de valor m² respecto al área POT y 300m a la redonda", yaxis_title="Valor por metro cuadrado", barmode="group", template="simple_white", margin=dict(l=0, r=0, t=40, b=0))
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.session_state.buffer_valorm2 = BytesIO(pio.to_image(fig, format='png'))
+
+    st.markdown("### 🥧 Distribución de usos POT en 500m")
+
+    buffer_uso = manzana_sel.to_crs(epsg=3116).buffer(500).to_crs(epsg=4326)
+    manzanas_buffer_uso = manzanas_sel[manzanas_sel.geometry.intersects(buffer_uso.iloc[0])]
+
+    if "uso_pot_simplificado" not in manzanas_buffer_uso.columns:
+        manzanas_buffer_uso["uso_pot_simplificado"] = "Sin clasificación POT"
+
+    conteo_uso = manzanas_buffer_uso["uso_pot_simplificado"].value_counts().reset_index()
+    conteo_uso.columns = ["uso", "cantidad"]
+
+    
+
+
+    if not conteo_uso.empty:
+        colores = [color_map.get(uso, "gray") for uso in conteo_uso["uso"]]
+        fig_pie = px.pie(conteo_uso, values="cantidad", names="uso", color_discrete_sequence=colores, title=f"Distribución de usos POT en buffer de 500m\nManzana {manzana_id}")
+        fig_pie.update_traces(textinfo='percent+label', textfont_size=14)
+        fig_pie.update_layout(template="simple_white", margin=dict(l=0, r=0, t=40, b=0))
+        st.plotly_chart(fig_pie, use_container_width=True)
+        st.session_state.buffer_dist_pot = BytesIO(pio.to_image(fig_pie, format='png'))
+    else:
+        st.warning("⚠️ No se encontraron manzanas con clasificación POT dentro del buffer de 500m.")
+
+    st.markdown("### 📈 Proyección del valor m² para los próximos años")
+
+    serie_proyeccion = manzana_sel[["valor_m2", "valor_2025_s1", "valor_2025_s2", "valor_2026_s1", "valor_2026_s2"]].values.flatten()
+    fechas = ["2024-S2", "2025-S1", "2025-S2", "2026-S1", "2026-S2"]
+
+    # --- Guardar variables clave en session_state para el informe ---
+    st.session_state.nombre_localidad = nombre_localidad
+    st.session_state.promedio_area = promedio_area
+    st.session_state.promedio_buffer = promedio_buffer
+
+
+    if not conteo_uso.empty:
+        uso_pot_mayoritario = conteo_uso.iloc[0]["uso"]
+        st.session_state.uso_pot_mayoritario = uso_pot_mayoritario
+    else:
+        st.session_state.uso_pot_mayoritario = "Sin clasificación POT"
+    
+    st.session_state.buffer_mapa_pot = st.session_state.buffer_dist_pot
+
+
+
+    ## OJO CON ESTE BLOQUE
+    import plotly.express as px
+    import plotly.io as pio
+    from io import BytesIO
+
+    manzanas_localidad = st.session_state.manzanas_localidad_sel.copy()
+    color_map = st.session_state.color_map
+
+    import pandas as pd
+
+    # Crear la ficha estilizada para el informe
+    ficha_estilizada = pd.DataFrame({
+    "ID Manzana": [manzana_id],
+    "Localidad": [nombre_localidad],
+    "Estrato": [manzana_sel["estrato"].values[0]],
+    "Valor m²": [f"${valor_manzana:,.0f}"],
+    "Prom. Área POT": [f"${promedio_area:,.0f}"],
+    "Prom. 300m": [f"${promedio_buffer:,.0f}"],
+    "Rentabilidad": [manzana_sel["rentabilidad"].values[0]]
+    })
+
+    st.session_state.ficha_estilizada = ficha_estilizada
+
+
+    
+    if not any(pd.isna(serie_proyeccion)):
+        fig_line = go.Figure()
+        fig_line.add_trace(go.Scatter(x=fechas, y=serie_proyeccion, mode="lines+markers+text", line=dict(color="royalblue", width=3), marker=dict(size=8), text=[f"${v:,.0f}" for v in serie_proyeccion], textposition="top center", textfont=dict(size=14), name="Proyección valor m²"))
+        fig_line.update_layout(title=f"Evolución Proyectada del Valor m² - Manzana {manzana_id}", xaxis_title="Periodo", yaxis_title="Valor m²", template="simple_white", margin=dict(l=0, r=0, t=40, b=0))
+        st.plotly_chart(fig_line, use_container_width=True)
+        st.session_state.buffer_proyeccion = BytesIO(pio.to_image(fig_line, format='png'))
+    else:
+        st.warning("⚠️ La información de proyección del valor m² no está completa para esta manzana.")
+
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔙 Volver al Análisis de Transporte y Educación"):
+            st.session_state.step = 4
+            st.rerun()
+    with col2:
+        if st.button("➡️ Continuar al Análisis de Seguridad"):
+            st.session_state.step = 6
+            st.rerun()
