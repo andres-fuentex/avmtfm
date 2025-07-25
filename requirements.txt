@@ -3,6 +3,5 @@ geopandas
 pandas
 folium
 shapely
-plotly>=5.14
-kaleido
+plotly>=6.1.1
 streamlit-folium
