@@ -15,6 +15,8 @@ import pydeck as pdk
 
 import os
 
+
+
 if os.environ.get("STREAMLIT_RUNNING") == "true":
     import plotly.io as pio
     pio.kaleido.scope.chromium_args = (
@@ -23,6 +25,7 @@ if os.environ.get("STREAMLIT_RUNNING") == "true":
         "--single-process",
         "--disable-gpu"
     )
+    pio.kaleido.scope.use_chromium()
 
 
 
@@ -169,16 +172,7 @@ elif st.session_state.step == 3:
     import json
     import plotly.io as pio
     from io import BytesIO
-    import os # Import the os module
-    import psutil
-
-    if os.environ.get("STREAMLIT_RUNNING") == "true":
-        pio.kaleido.scope.chromium_args = (
-        "--headless",
-        "--no-sandbox",
-        "--single-process",
-        "--disable-gpu",
-    )
+   
 
     localidades = st.session_state.localidades
     areas = st.session_state.areas
@@ -206,8 +200,6 @@ elif st.session_state.step == 3:
     )
     fig_localidad.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
     st.plotly_chart(fig_localidad, use_container_width=True)
-    import plotly.io as pio
-    from io import BytesIO
 
     # Guardar imagen del mapa de localidad para el informe
     buffer_localidad = BytesIO()
