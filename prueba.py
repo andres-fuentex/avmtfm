@@ -1,15 +1,15 @@
 import streamlit as st
 import geopandas as gpd
-import requests  # Importar requests
+import requests
 import folium
 from streamlit_folium import st_folium
 from shapely.geometry import Point
-
+import time  # Importar la librería time
 
 st.set_page_config(page_title="AVM Bogotá APP", page_icon="🏠", layout="centered")
 st.title("🏠 AVM Bogotá - Análisis de Manzanas")
 
-# --- Función cacheada para la carga de datos (con manejo de errores) ---
+# --- Función cacheada para la carga de datos (con manejo de errores y reintentos) ---
 @st.cache_data
 def cargar_datasets():
     datasets = {
@@ -27,17 +27,26 @@ def cargar_datasets():
     for idx, (nombre, url) in enumerate(datasets.items(), start=1):
         progress_text = f"Cargando {nombre} ({idx}/{total})..."
         progress_bar.progress(idx / total, text=progress_text)
-        try:
-            # Usar requests para obtener el contenido y manejar errores de red
-            response = requests.get(url, timeout=10)  # Timeout de 10 segundos
-            response.raise_for_status()  # Lanza una excepción para códigos de error HTTP
-            dataframes[nombre] = gpd.read_file(response.text)
-        except requests.exceptions.RequestException as e:
-            st.error(f"Error al cargar {nombre} desde la URL: {e}")
-            return None  # Detener la carga si hay un error
-        except Exception as e:
-            st.error(f"Error al procesar {nombre}: {e}")
-            return None
+        
+        max_retries = 3  # Número máximo de reintentos
+        retry_delay = 2  # Tiempo de espera entre reintentos (segundos)
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, timeout=30)  # Timeout aumentado a 30 segundos
+                response.raise_for_status()
+                dataframes[nombre] = gpd.read_file(response.text)
+                break  # Si la carga tiene éxito, salir del bucle de reintentos
+            except requests.exceptions.RequestException as e:
+                st.warning(f"Intento {attempt + 1}/{max_retries} fallido al cargar {nombre}: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)  # Esperar antes de reintentar
+                else:
+                    st.error(f"Error al cargar {nombre} después de {max_retries} intentos: {e}")
+                    return None  # Detener la carga si no se puede descargar después de varios intentos
+            except Exception as e:
+                st.error(f"Error al procesar {nombre}: {e}")
+                return None
 
     progress_bar.empty()
     return dataframes
