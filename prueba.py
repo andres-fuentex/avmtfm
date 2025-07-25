@@ -146,6 +146,7 @@ elif st.session_state.step == 2:
 # --- Bloque 3: Selección de Manzana ---
 # --- Bloque 3: Selección de Manzana ---
 # --- Bloque 3: Selección de Manzana ---
+# --- Bloque 3: Selección de Manzana ---
 elif st.session_state.step == 3:
     st.subheader(f"🏘️ Análisis y Selección de Manzana en {st.session_state.localidad_sel}")
 
@@ -188,8 +189,23 @@ elif st.session_state.step == 3:
     
     mapa_manzanas = folium.Map(location=center, tiles="CartoDB positron", zoom_start=14)
 
+    # Create GeoJSON object with properties explicitly included
+    geo_json_data = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": json.loads(gpd.GeoSeries([row.geometry]).to_json())[
+                    "features"
+                  ][0]["geometry"],  # Extract geometry from GeoJSON
+                "properties": row.drop("geometry").to_dict(),  # Include all other columns as properties
+            }
+            for _, row in manzanas_localidad_sel.iterrows()
+        ],
+    }
+
     folium.GeoJson(
-        manzanas_localidad_sel,
+        geo_json_data,
         style_function=lambda feature: {
             "fillColor": color_map.get(feature["properties"]["uso_pot_simplificado"], "#808080"),
             "color": "black",
@@ -199,7 +215,7 @@ elif st.session_state.step == 3:
         highlight_function=lambda x: {"weight": 3, "color": "#e30613", "fillOpacity": 0.8},
         tooltip=folium.GeoJsonTooltip(fields=["id_manzana_unif", "uso_pot_simplificado"], aliases=["ID Manzana:", "Uso POT:"])
     ).add_to(mapa_manzanas)
-    
+
     mapa_manzanas.fit_bounds(folium.GeoJson(manzanas_localidad_sel).get_bounds())
 
     # 5. Capturar la Interacción del Usuario
