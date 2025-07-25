@@ -354,10 +354,12 @@ elif st.session_state.step == 4:
     st.plotly_chart(fig_pastel, use_container_width=True)
 
         st.markdown("""
-        ### 🏫 Contexto Educativo
-        Se muestra un buffer de **1000 metros** alrededor de la manzana seleccionada, resaltando los colegios cercanos.
-        """)
-
+        st.markdown(
+            """
+            ### 🏫 Contexto Educativo
+            Se muestra un buffer de **1000 metros** alrededor de la manzana seleccionada, resaltando los colegios cercanos.
+            """
+        )
         id_colegios = manzana_sel["id_com_colegios"].iloc[0]
         buffer_proj_edu = manzana_proj.buffer(1000)
         buffer_wgs_edu = gpd.GeoSeries([buffer_proj_edu.iloc[0]], crs=3116).to_crs(epsg=4326).iloc[0]
