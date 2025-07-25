@@ -362,84 +362,107 @@ elif st.session_state.step == 4:
     import pandas as pd
     from shapely.geometry import MultiPoint, Point
     from io import BytesIO
+    import plotly.io as pio
 
     manzanas = st.session_state.manzanas
     transporte = st.session_state.transporte
     colegios = st.session_state.colegios
     id_manzana = st.session_state.manzana_sel
+    
+    manzana_sel_gdf = manzanas[manzanas["id_manzana_unif"] == id_manzana]
 
-    manzana_sel = manzanas[manzanas["id_manzana_unif"] == id_manzana]
-
-    if manzana_sel.empty:
+    if manzana_sel_gdf.empty:
         st.warning("⚠️ No se encontraron datos para la manzana seleccionada.")
         if st.button("🔙 Volver a Selección de Manzana"):
             st.session_state.step = 3
             st.rerun()
     else:
         # --- 1. Preparar la Manzana y el Centroide ---
-        manzana_proj = manzana_sel.to_crs(epsg=3116)
+        manzana_proj = manzana_sel_gdf.to_crs(epsg=3116)
+        centroide = manzana_proj.geometry.centroid.to_crs(epsg=4326).iloc[0]
+        lon0, lat0 = centroide.x, centroide.y
 
-        if not manzana_proj.empty:
-            centroide_proj = manzana_proj.geometry.centroid.iloc[0]
-            centroide = gpd.GeoSeries([centroide_proj], crs=3116).to_crs(epsg=4326).iloc[0]
-            lon0, lat0 = centroide.x, centroide.y
+        # --- 2. Contexto de TRANSPORTE ---
+        st.markdown("### 🚇 Contexto de Transporte (Buffer 800m)")
+        
+        buffer_transporte_proj = manzana_proj.buffer(800)
+        buffer_transporte_wgs = buffer_transporte_proj.to_crs(epsg=4326).iloc[0]
+        
+        fig_transporte = go.Figure(go.Scattermapbox(
+            lat=list(buffer_transporte_wgs.exterior.xy[1]),
+            lon=list(buffer_transporte_wgs.exterior.xy[0]),
+            mode='lines', fill='toself', name='Buffer 800m',
+            fillcolor='rgba(255,0,0,0.1)', line=dict(color='red')
+        ))
 
-            manzana_wgs = manzana_proj.to_crs(epsg=4326)
-            coords_m = list(manzana_wgs.geometry.iloc[0].exterior.coords)
-            lon_m, lat_m = zip(*coords_m)
+        fig_transporte.add_trace(go.Scattermapbox(
+            lat=list(manzana_sel_gdf.geometry.iloc[0].exterior.xy[1]),
+            lon=list(manzana_sel_gdf.geometry.iloc[0].exterior.xy[0]),
+            mode='lines', fill='toself', name='Manzana',
+            fillcolor='rgba(0,128,0,0.3)', line=dict(color='darkgreen')
+        ))
 
-            # --- 2. Contexto de TRANSPORTE ---
-            st.markdown("### 🚇 Contexto de Transporte (Buffer 800m)")
+        id_combi = manzana_sel_gdf["id_combi_acceso"].iloc[0]
+        
+        if pd.notna(id_combi):
+            multipunto_transporte = transporte.loc[transporte["id_combi_acceso"] == id_combi, "geometry"]
+            if not multipunto_transporte.empty:
+                puntos = list(multipunto_transporte.iloc[0].geoms)
+                fig_transporte.add_trace(go.Scattermapbox(
+                    lat=[p.y for p in puntos], lon=[p.x for p in puntos],
+                    mode='markers', name='Estaciones', marker=dict(color='red', size=10)
+                ))
+        fig_transporte.update_layout(
+            mapbox_style="carto-positron", mapbox_center={"lat": lat0, "lon": lon0}, mapbox_zoom=14,
+            margin={"r": 0, "t": 40, "l": 0, "b": 0}, title="Contexto de Transporte"
+        )
+        st.plotly_chart(fig_transporte, use_container_width=True)
+        st.session_state.buffer_transporte = BytesIO(pio.to_image(fig_transporte, format='png'))
 
-            buffer_proj = manzana_proj.buffer(800)
-            buffer_wgs = gpd.GeoSeries([buffer_proj.iloc[0]], crs=3116).to_crs(epsg=4326).iloc[0]
-            coords_b = list(buffer_wgs.exterior.coords)
-            lon_b, lat_b = zip(*coords_b)
+        # --- 3. Contexto EDUCATIVO ---
+        st.markdown("### 🏫 Contexto Educativo (Buffer 1000m)")
+        buffer_colegios_proj = manzana_proj.buffer(1000)
+        buffer_colegios_wgs = buffer_colegios_proj.to_crs(epsg=4326).iloc[0]
+        
+        fig_colegios = go.Figure(go.Scattermapbox(
+            lat=list(buffer_colegios_wgs.exterior.xy[1]),
+            lon=list(buffer_colegios_wgs.exterior.xy[0]),
+            mode='lines', fill='toself', name='Buffer 1000m',
+            fillcolor='rgba(0,0,255,0.1)', line=dict(color='blue')
+        ))
 
-            fig_transporte = go.Figure()
-            fig_transporte.add_trace(go.Scattermapbox(lon=lon_m, lat=lat_m, mode="lines", fill="toself",
-                                                    fillcolor="rgba(0,128,0,0.3)",
-                                                    line=dict(color="darkgreen", width=2),
-                                                    name="Manzana seleccionada"))
-            fig_transporte.add_trace(go.Scattermapbox(lon=lon_b, lat=lat_b, mode="lines", fill="toself",
-                                                    fillcolor="rgba(255,0,0,0.1)",
-                                                    line=dict(color="red", width=1),
-                                                    name="Buffer 800 m"))
-            id_combi = manzana_sel["id_combi_acceso"].iloc[0]
+        id_colegios = manzana_sel_gdf["id_com_colegios"].iloc[0]
+        if pd.notna(id_colegios):
+            multipunto_colegios = colegios.loc[colegios["id_com_colegios"] == id_colegios, "geometry"]
+            if not multipunto_colegios.empty:
+                puntos_colegios = list(multipunto_colegios.iloc[0].geoms)
+                fig_colegios.add_trace(go.Scattermapbox(
+                    lat=[p.y for p in puntos_colegios], lon=[p.x for p in puntos_colegios],
+                    mode='markers', name='Colegios', marker=dict(color='blue', size=10)
+                ))
 
-            if pd.notna(id_combi):
-                transportes_sel = transporte[transporte["id_combi_acceso"] == id_combi]
-                if not transportes_sel.empty:
-                    multipunto = transportes_sel["geometry"].iloc[0]
-                pts = gpd.GeoDataFrame(geometry=list(multipunto.geoms), crs=transporte.crs).to_crs(epsg=4326)
-                lon_p, lat_p = pts.geometry.x.tolist(), pts.geometry.y.tolist()
+        fig_colegios.update_layout(
+            mapbox_style="carto-positron", mapbox_center={"lat": lat0, "lon": lon0}, mapbox_zoom=14,
+            margin={"r": 0, "t": 40, "l": 0, "b": 0}, title="Contexto Educativo"
+        )
+        st.plotly_chart(fig_colegios, use_container_width=True)
+        st.session_state.buffer_colegios = BytesIO(pio.to_image(fig_colegios, format='png'))
+        
 
-                fig_transporte.add_trace(go.Scattermapbox(lon=lon_p, lat=lat_p, mode="markers",
-                                                        marker=dict(size=10, color="red"),
-                                                        name="Estaciones TM"))
-                fig_transporte.update_layout(mapbox=dict(style="carto-positron", center=dict(lon=lon0, lat=lat0), zoom=14),
-                                    margin=dict(l=0, r=0, t=40, b=0),
-                                    title="Detalle de Manzana con Buffer y Estaciones de TM")
-            st.plotly_chart(fig_transporte, use_container_width=True)
-            buffer_transporte = BytesIO()
-            pio.write_image(fig_transporte, buffer_transporte, format='png', engine='kaleido')
+    # Navegación
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("🔙 Volver a Selección de Manzana"):
+            st.session_state.step = 3
+            st.rerun()
+    with col2:
+        if st.button("🔄 Volver al Inicio"):
+            st.session_state.step = 1
+            st.rerun()
+    with col3:
+        if st.button("➡️ Continuar al Análisis Comparativo", disabled=manzana_sel_gdf.empty):
+            st.session_state.step = 5
             st.session_state.buffer_transporte = buffer_transporte
-
-    
-
-        # Navegación
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("🔙 Volver a Selección de Manzana"):
-                st.session_state.step = 3
-                st.rerun()
-        with col2:
-            if st.button("🔄 Volver al Inicio"):
-                st.session_state.step = 1
-                st.rerun()
-        with col3:
-            if st.button("➡️ Continuar al Bloque 5"):
-                st.session_state.step = 5
-                st.session_state.buffer_transporte = buffer_transporte
-                st.session_state.manzana_seleccionada_df = manzana_sel
-                st.rerun()
+            st.session_state.buffer_colegios = buffer_colegios
+            st.session_state.manzana_seleccionada_df = manzana_sel
+            st.rerun()
