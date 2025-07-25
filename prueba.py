@@ -152,10 +152,12 @@ elif st.session_state.step == 2:
 
 # --- Bloque 3: Selección de Manzana con Copia Manual (Simplificado para Depuración) ---
 # --- Bloque 3: Selección de Manzana con Copia Manual (Simplificado para Depuración) ---
+# --- Bloque 3: Selección de Manzana con Copia Manual (Simplificado para Depuración) ---
 elif st.session_state.step == 3:
     st.subheader(f"🏘️ Análisis y Selección de Manzana en {st.session_state.localidad_sel}")
 
     localidades = st.session_state.localidades
+    areas = st.session_state.areas
     manzanas = st.session_state.manzanas
     localidad_sel = st.session_state.localidad_sel
 
@@ -171,12 +173,12 @@ elif st.session_state.step == 3:
         st.warning("⚠️ No se encontraron manzanas para la localidad seleccionada.")
         st.stop()
 
-    # Centro del mapa
+    # 2. Calcular el centro del mapa
     bounds = manzanas_sel.total_bounds
     center = {"lon": (bounds[0] + bounds[2]) / 2, "lat": (bounds[1] + bounds[3]) / 2}
     geojson_text = manzanas_sel.to_json()
 
-    # Inyectar HTML y JavaScript
+    # 3. Inyectar HTML y JavaScript
     components.html(f"""
         <div id="map" style="height: 500px;"></div>
         <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
@@ -184,13 +186,13 @@ elif st.session_state.step == 3:
 
         <script>
             var map = L.map('map').setView([{center['lat']}, {center['lon']}], 13);
-            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {{
+            L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{  // **CORREGIDO**
                 maxZoom: 18,
                 attribution: '© OpenStreetMap contributors'
             }}).addTo(map);
 
             L.geoJSON({geojson_text}).addTo(map);
-
+            map.fitBounds(L.geoJSON({geojson_text}).getBounds());
         </script>
     """, height=620)
 
