@@ -36,11 +36,11 @@ if "step" not in st.session_state:
 
 # --- Bloque 1: Carga de datos ---
 if st.session_state.step == 1:
-    st.markdown("""
-    ## Bienvenido al Análisis de Valorización de Manzanas de Bogotá  
-    Esta aplicación hace uso de datos abiertos tratados bajo metodologías académicas.  
-    """)
-
+    st.markdown(
+        """
+        Bienvenido al sistema de valorización automatizada de manzanas catastrales en Bogotá.
+        """
+    )
     with st.spinner('Cargando datasets...'):
         dataframes = cargar_datasets()
 
@@ -152,11 +152,11 @@ elif st.session_state.step == 3:
             st.session_state.step = 2
             st.rerun()
     else:
-        st.markdown("""
-        ### 🖱️ Haz clic sobre la manzana para seleccionarla  
-        ✅ El código de la manzana seleccionada aparecerá en la caja de abajo  
-        ✅ ¡Copia el código y pégalo en el campo para confirmar!  
-        """)
+    st.markdown(
+        """
+        Se muestra un mapa con las estaciones de transporte público cercanas a la manzana seleccionada.
+        """
+    )
 
         if not areas_sel.empty:
             manzanas_sel = manzanas_sel.merge(
@@ -308,11 +308,11 @@ elif st.session_state.step == 4:
             st.session_state.step = 3
             st.rerun()
     else:
-        st.markdown("""
-        ### 🚇 Contexto de Transporte
-        Se muestra un buffer de **800 metros** alrededor de la manzana seleccionada, resaltando las estaciones de TransMilenio cercanas.
-        """)
-
+    st.markdown(
+        """
+        Distribución de colegios cercanos según niveles educativos.
+        """
+    )
         manzana_proj = manzana_sel.to_crs(epsg=3116)
         centroide_proj = manzana_proj.geometry.centroid.iloc[0]
         centroide = gpd.GeoSeries([centroide_proj], crs=3116).to_crs(epsg=4326).iloc[0]
@@ -350,28 +350,24 @@ elif st.session_state.step == 4:
         st.plotly_chart(fig, use_container_width=True)
 
         buffer_transporte = BytesIO()
-# Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
+    # Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
     st.plotly_chart(fig_pastel, use_container_width=True)
-
-        st.markdown("""
-        st.markdown(
-            """
-            ### 🏫 Contexto Educativo
-            Se muestra un buffer de **1000 metros** alrededor de la manzana seleccionada, resaltando los colegios cercanos.
-            """
-        )
-        )
-        id_colegios = manzana_sel["id_com_colegios"].iloc[0]
-        buffer_proj_edu = manzana_proj.buffer(1000)
-        buffer_wgs_edu = gpd.GeoSeries([buffer_proj_edu.iloc[0]], crs=3116).to_crs(epsg=4326).iloc[0]
-        coords_buff_col = list(buffer_wgs_edu.exterior.coords)
-        lon_buff_col, lat_buff_col = zip(*coords_buff_col)
-
-        filtered = colegios[colegios["id_com_colegios"] == id_colegios]
-        lon_p_col, lat_p_col = [], []
-        if not filtered.empty:
-            geom = filtered.geometry.iloc[0]
-            if isinstance(geom, MultiPoint):
+    st.markdown(
+        """
+        ### 🏫 Contexto Educativo
+        Se muestra un buffer de **1000 metros** alrededor de la manzana seleccionada, resaltando los colegios cercanos.
+        """
+    )
+    )
+    id_colegios = manzana_sel["id_com_colegios"].iloc[0]
+    buffer_proj_edu = manzana_proj.buffer(1000)
+    buffer_wgs_edu = gpd.GeoSeries([buffer_proj_edu.iloc[0]], crs=3116).to_crs(epsg=4326).iloc[0]
+    coords_buff_col = list(buffer_wgs_edu.exterior.coords)
+    lon_buff_col, lat_buff_col = zip(*coords_buff_col)
+    filtered = colegios[colegios["id_com_colegios"] == id_colegios]
+    lon_p_col, lat_p_col = [], []
+    if not filtered.empty:
+        geom = filtered.geometry.iloc[0]
                 geoms = list(geom.geoms)
             elif isinstance(geom, Point):
                 geoms = [geom]
