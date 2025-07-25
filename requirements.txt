@@ -7,3 +7,4 @@ plotly>=6.1.1
 streamlit-folium
 pydeck
 kaleido
+psutil

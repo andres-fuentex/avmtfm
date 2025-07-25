@@ -13,6 +13,17 @@ import streamlit.components.v1 as components
 import json
 import pydeck as pdk
 
+import os
+
+if os.environ.get("STREAMLIT_RUNNING") == "true":
+    import plotly.io as pio
+    pio.kaleido.scope.chromium_args = (
+        "--headless",
+        "--no-sandbox",
+        "--single-process",
+        "--disable-gpu"
+    )
+
 
 
 # --- Configuración de la Página ---
@@ -156,8 +167,6 @@ elif st.session_state.step == 3:
     import geopandas as gpd
     import plotly.express as px
     import json
-    import plotly.io as pio
-    from io import BytesIO
 
     localidades = st.session_state.localidades
     areas = st.session_state.areas
@@ -185,6 +194,8 @@ elif st.session_state.step == 3:
     )
     fig_localidad.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
     st.plotly_chart(fig_localidad, use_container_width=True)
+    import plotly.io as pio
+    from io import BytesIO
 
     # Guardar imagen del mapa de localidad para el informe
     buffer_localidad = BytesIO()
@@ -251,9 +262,6 @@ elif st.session_state.step == 3:
             <p><b>🔎 Código de la manzana seleccionada (¡copia este valor!):</b></p>
             <input type="text" id="selected_id_input" value="" style="width: 100%; padding: 5px;" readonly>
 
-            <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
-
             <script>
                 const map = L.map('map').setView([{center['lat']}, {center['lon']}], 13);
                 L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
@@ -295,7 +303,7 @@ elif st.session_state.step == 3:
                             document.getElementById("selected_id_input").value = feature.properties.id_manzana_unif;
                         }}
                     }});
-                    layer.bindTooltip("Manzana: " + feature.properties.id_manzana_unif);
+                layer.bindTooltip("Manzana: " + feature.properties.id_manzana_unif);
                 }}
 
                 const geojson = L.geoJSON(manzanas, {{
@@ -335,3 +343,4 @@ elif st.session_state.step == 3:
 def hexToRgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
