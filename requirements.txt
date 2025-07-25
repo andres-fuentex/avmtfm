@@ -1,11 +1,10 @@
-streamlit>=1.30
-geopandas
+streamlit
+pandas
+geopandas==0.14.3
+requests
 folium
 streamlit-folium
-contextily
-seaborn
 matplotlib
+seaborn
 topojson
-pandas
-shapely
-requests
+contextily
