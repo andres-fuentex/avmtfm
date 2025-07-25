@@ -5,3 +5,4 @@ folium
 shapely
 plotly>=6.1.1
 streamlit-folium
+folium.plugins

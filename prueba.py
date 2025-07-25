@@ -109,37 +109,38 @@ elif st.session_state.step == 2:
 
     mapa = folium.Map(location=center, zoom_start=10, tiles="CartoDB positron")
 
+    # Añadir las localidades al mapa
     folium.GeoJson(
         localidades,
         style_function=lambda feature: {
             "fillColor": "#3388ff",
             "color": "black",
             "weight": 1,
-            "fillOpacity": 0.4,  # Aumentar la opacidad
+            "fillOpacity": 0.4,
         },
         highlight_function=lambda feature: {
             "weight": 3,
             "color": "red",
         },
-        tooltip=folium.GeoJsonTooltip(fields=["nombre_localidad"], aliases=["Localidad:"], labels=True, sticky=True) # Tooltip mejorado
+        tooltip=folium.GeoJsonTooltip(fields=["nombre_localidad"], aliases=["Localidad:"], labels=True, sticky=True)
     ).add_to(mapa)
 
-    map_data = st_folium(mapa, width=700, height=500, returned_objects=["last_object_clicked"])
+    # Añadir ClickForMarker para capturar las coordenadas del clic
+    folium.plugins.ClickForMarker().add_to(mapa)
 
-    # Depuración: Mostrar el contenido de map_data
-    st.write("Contenido de map_data:", map_data)
+    map_data = st_folium(mapa, width=700, height=500, returned_objects=["all_drawings"])
 
-    # Almacenar la localidad clicada en el estado de la sesión
-    if map_data and map_data.get("last_object_clicked"):
-        clicked_object = map_data["last_object_clicked"]
-        if "properties" in clicked_object and "nombre_localidad" in clicked_object["properties"]:
-            st.session_state.localidad_clic = clicked_object["properties"]["nombre_localidad"]
-        else:
-            st.warning("⚠️ No se pudo obtener el nombre de la localidad.")
-            st.session_state.localidad_clic = None
-        st.write("Localidad clicada:", st.session_state.localidad_clic)  # Depuración
-    else:
-        st.session_state.localidad_clic = None
+    # Determinar la localidad seleccionada basándose en la ubicación del marcador
+    if map_data and map_data.get("all_drawings"):
+        last_drawing = map_data["all_drawings"][-1]  # Obtener el último marcador
+        if last_drawing["geometry"]["type"] == "Point":
+            point = Point(last_drawing["geometry"]["coordinates"])
+            for _, row in localidades.iterrows():
+                if row["geometry"].contains(point):
+                    st.session_state.localidad_clic = row["nombre_localidad"]
+                    break
+            else:
+                st.session_state.localidad_clic = None # No se encontró la localidad
 
     # Mostrar la localidad seleccionada y el botón de confirmar
     if "localidad_clic" in st.session_state and st.session_state.localidad_clic:
