@@ -91,3 +91,56 @@ if st.session_state.step == 1:
             st.rerun()
     else:
         st.error("❌ Error al cargar los datasets. Por favor, revise las URLs o la conexión a Internet.")
+        # --- Bloque 2: Selección de Localidad ---
+elif st.session_state.step == 2:
+    st.header("🌆 Selección de Localidad")
+    st.markdown("Haz clic en la localidad que te interesa:")
+
+    localidades = st.session_state.localidades  # Obtener el GeoDataFrame
+    if localidades is None:
+        st.error("❌ No se cargaron los datos de las localidades. Por favor, reinicia la aplicación.")
+        st.stop()
+
+    bounds = localidades.total_bounds
+    center = [(bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2]
+
+    mapa = folium.Map(location=center, zoom_start=10, tiles="CartoDB positron")
+
+    folium.GeoJson(
+        localidades,
+        style_function=lambda feature: {
+            "fillColor": "#3388ff",
+            "color": "black",
+            "weight": 1,
+            "fillOpacity": 0.4,  # Aumentar la opacidad
+        },
+        highlight_function=lambda feature: {
+            "weight": 3,
+            "color": "red",
+        },
+        tooltip=folium.GeoJsonTooltip(fields=["nombre_localidad"], aliases=["Localidad:"], labels=True, sticky=True) # Tooltip mejorado
+    ).add_to(mapa)
+
+    map_data = st_folium(mapa, width=700, height=500, returned_objects=["last_object_clicked"])
+
+    # Almacenar la localidad clicada en el estado de la sesión
+    if map_data and map_data.get("last_object_clicked"):
+        clicked = map_data["last_object_clicked"]
+        st.session_state.localidad_clic = clicked.get("properties", {}).get("nombre_localidad")
+
+    # Mostrar la localidad seleccionada y el botón de confirmar
+    if "localidad_clic" in st.session_state and st.session_state.localidad_clic:
+        st.text_input("✅ Localidad seleccionada", value=st.session_state.localidad_clic, disabled=True)
+        if st.button("✅ Confirmar selección"):
+            st.session_state.localidad_sel = st.session_state.localidad_clic
+            st.session_state.step = 3
+            st.rerun()
+
+    # Botón para volver al inicio
+    if st.button("🔄 Volver al Inicio"):
+        st.session_state.step = 1
+        st.rerun()
+
+    # Mensaje informativo
+    if "localidad_sel" not in st.session_state:
+        st.info("Selecciona una localidad en el mapa y confírmala para continuar.")
