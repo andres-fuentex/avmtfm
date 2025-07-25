@@ -3,8 +3,8 @@ geopandas
 pandas
 folium
 shapely
-plotly>=6.1.1
+plotly>=6.1.1 kaleido
 streamlit-folium
 pydeck
-kaleido
 psutil
+kaleido_get_chrome
