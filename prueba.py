@@ -13,6 +13,8 @@ import streamlit.components.v1 as components
 import json
 import pydeck as pdk
 
+
+
 # --- Configuración de la Página ---
 st.set_page_config(page_title="AVM Bogotá APP", page_icon="🏠", layout="centered")
 st.title("🏠 AVM Bogotá - Análisis de Manzanas")
@@ -149,6 +151,7 @@ elif st.session_state.step == 2:
 # --- Bloque 3: Selección de Manzana ---
 
 
+
 # --- Bloque 3: Selección de Manzana ---
 elif st.session_state.step == 3:
     st.subheader(f"🏘️ Análisis y Selección de Manzana en {st.session_state.localidad_sel}")
@@ -185,67 +188,119 @@ elif st.session_state.step == 3:
     color_map["Sin clasificación"] = "#808080"  # Gris para "Sin clasificación"
     st.session_state.color_map = color_map
 
-    # 4. Preparar los datos para pydeck
-    manzanas_localidad_sel['fill_color'] = manzanas_localidad_sel['uso_pot_simplificado'].map(color_map)
-    manzanas_localidad_sel['line_color'] = "#000000"  # Color del borde
+    # 4. Asignar colores a cada manzana en el GeoDataFrame
+    manzanas_localidad_sel["color"] = manzanas_localidad_sel["uso_pot_simplificado"].apply(lambda x: color_map.get(x, "#808080"))
 
-    # Convertir GeoDataFrame a formato que pydeck pueda usar
-    geojson = json.loads(manzanas_localidad_sel.to_json())
+    # 5. Preparar los datos para JavaScript
+    manzanas_data = []
+    for _, row in manzanas_localidad_sel.iterrows():
+        feature = {
+            "type": "Feature",
+            "geometry": json.loads(gpd.GeoSeries([row['geometry']]).to_json())['features'][0]['geometry'],
+            "properties": {
+                "id_manzana_unif": row['id_manzana_unif'],
+                "uso_pot_simplificado": row['uso_pot_simplificado'],
+                "color": row['color']  # Usar el color ya calculado
+            }
+        }
+        manzanas_data.append(feature)
 
-    # 5. Crear la capa GeoJsonLayer
-    geojson_layer = pdk.Layer(
-        "GeoJsonLayer",
-        data=geojson,
-        get_fill_color="feature.properties.fill_color ? hexToRgb(feature.properties.fill_color) : [128, 128, 128]",
-        get_line_color="feature.properties.line_color ? hexToRgb(feature.properties.line_color) : [0, 0, 0]",
-        get_line_width=1,
-        pickable=True,
-        auto_highlight=True,
-        tooltip={
-            "html": "Manzana: {properties.id_manzana_unif}<br>Uso POT: {properties.uso_pot_simplificado}",
-            "style": {
-                "backgroundColor": "steelblue",
-                "color": "white",
-                "fontFamily": '"Helvetica Neue", Arial, sans-serif',
-                "fontSize": "12px",
-                "padding": "4px",
-            },
-        },
-    )
+    manzanas_json = json.dumps({"type": "FeatureCollection", "features": manzanas_data})
 
-    # 6. Calcular el viewport
+    # 6. Calcular el centro del mapa
     bounds = manzanas_localidad_sel.total_bounds
-    view_state = pdk.ViewState(
-        latitude=(bounds[1] + bounds[3]) / 2,
-        longitude=(bounds[0] + bounds[2]) / 2,
-        zoom=12,
-        pitch=0,
+    center = [(bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2]
+
+    # 7. Inyectar HTML/JavaScript para el mapa
+    components.html(
+        f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Leaflet Map</title>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+            <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+        </head>
+        <body>
+            <div id="mapid" style="width: 700px; height: 500px;"></div>
+            <script>
+                var map = L.map('mapid').setView([{center[0]}, {center[1]}], 14);
+
+                L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                    maxZoom: 19,
+                    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                }}).addTo(map);
+
+                var manzanas = {manzanas_json};
+
+                function style(feature) {{
+                    return {{
+                        fillColor: feature.properties.color,
+                        weight: 1,
+                        opacity: 1,
+                        color: 'black',
+                        fillOpacity: 0.5
+                    }};
+                }}
+
+                function highlightStyle() {{
+                    return {{
+                        fillColor: 'orange',
+                        weight: 2,
+                        color: 'red',
+                        fillOpacity: 0.7
+                    }};
+                }}
+
+                let selectedLayer = null;
+
+                function onEachFeature(feature, layer) {{
+                    layer.on({{
+                        click: function(e) {{
+                            if (selectedLayer) {{
+                                geojson.resetStyle(selectedLayer);
+                            }}
+                            selectedLayer = layer;
+                            layer.setStyle(highlightStyle());
+                            Streamlit.setComponentValue(feature.properties.id_manzana_unif);
+                        }});
+                        layer.bindTooltip("Manzana: " + feature.properties.id_manzana_unif);
+                    }}
+                }}
+
+                var geojson = L.geoJson(manzanas, {{
+                    style: style,
+                    onEachFeature: onEachFeature
+                }}).addTo(map);
+
+                map.fitBounds(geojson.getBounds());
+            </script>
+        </body>
+        </html>
+        """,
+        height=500,
+        width=700,
+        scrolling=False,
     )
 
-    # 7. Renderizar el mapa con st.pydeck_chart
-    st.pydeck_chart(pdk.Deck(
-        map_style="carto-positron",
-        layers=[geojson_layer],
-        initial_view_state=view_state,
-    ))
+    # 8. Capturar el ID de la manzana desde Streamlit
+    id_manzana_clic = components.html("", height=0, width=0)  # Para recibir el valor de JavaScript
+    st.session_state.manzana_clic = id_manzana_clic
 
-    # 8. Confirmación manual (el usuario copia el valor)
-    st.markdown("""
-        ### 🖱️ Haz clic sobre la manzana y copia el código
-        - Pasa el ratón sobre la manzana para ver su ID.
-        - **Copia el ID** y pégalo en el campo de texto de abajo.
-    """)
-    manzana_input = st.text_input("✅ Pega aquí el código de la manzana seleccionada para confirmar:")
-
-    if st.button("✅ Confirmar Manzana Seleccionada"):
-        if manzana_input:
-            st.session_state.manzana_sel = manzana_input
+    # 9. Mostrar Información y Confirmar la Selección
+    if "manzana_clic" in st.session_state and st.session_state.manzana_clic:
+        st.text_input("✅ Manzana seleccionada (ID):", value=st.session_state.manzana_clic, disabled=True)
+        if st.button("✅ Confirmar Manzana y Continuar"):
+            st.session_state.manzana_sel = st.session_state.manzana_clic
             st.session_state.manzanas_localidad_sel = manzanas_localidad_sel
             st.session_state.step = 4
             st.rerun()
-        else:
-            st.warning("Debes pegar el código de la manzana seleccionada.")
+    else:
+        st.info("Haz clic en una manzana del mapa para empezar.")
 
+    # 10. Botones de Navegación
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔙 Volver a Selección de Localidad"):
@@ -255,8 +310,3 @@ elif st.session_state.step == 3:
         if st.button("🔄 Volver al Inicio"):
             st.session_state.step = 1
             st.rerun()
-
-    # Funciones auxiliares (van fuera del bloque elif)
-def hexToRgb(hex_color):
-    hex_color = hex_color.lstrip('#')
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
