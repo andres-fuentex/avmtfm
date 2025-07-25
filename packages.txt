@@ -10,3 +10,4 @@ libasound2
 libgdal-dev
 gdal-bin
 xvfb
+chromium
