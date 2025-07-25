@@ -12,6 +12,21 @@ import base64
 import time
 import json
 
+
+
+import streamlit as st
+import geopandas as gpd
+import requests
+import folium
+from streamlit_folium import st_folium
+from shapely.geometry import Point
+import plotly.express as px
+import plotly.graph_objects as go
+import plotly.io as pio
+from io import BytesIO
+import base64
+import streamlit.components.v1 as components
+
 # --- Configuración de la Página ---
 st.set_page_config(page_title="AVM Bogotá APP", page_icon="🏠", layout="centered")
 st.title("🏠 AVM Bogotá - Análisis de Manzanas")
@@ -145,7 +160,8 @@ elif st.session_state.step == 2:
 
 # --- Bloque 3: Selección de Manzana ---
 # --- Bloque 3: Selección de Manzana ---
-# --- Bloque 3: Selección de Manzana ---
+
+
 # --- Bloque 3: Selección de Manzana ---
 elif st.session_state.step == 3:
     st.subheader(f"🏘️ Análisis y Selección de Manzana en {st.session_state.localidad_sel}")
@@ -189,23 +205,8 @@ elif st.session_state.step == 3:
     
     mapa_manzanas = folium.Map(location=center, tiles="CartoDB positron", zoom_start=14)
 
-    # Create GeoJSON object with properties explicitly included
-    geo_json_data = {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "geometry": json.loads(gpd.GeoSeries([row.geometry]).to_json())[
-                    "features"
-                  ][0]["geometry"],  # Extract geometry from GeoJSON
-                "properties": row.drop("geometry").to_dict(),  # Include all other columns as properties
-            }
-            for _, row in manzanas_localidad_sel.iterrows()
-        ],
-    }
-
     folium.GeoJson(
-        geo_json_data,
+        manzanas_localidad_sel,
         style_function=lambda feature: {
             "fillColor": color_map.get(feature["properties"]["uso_pot_simplificado"], "#808080"),
             "color": "black",
@@ -215,23 +216,43 @@ elif st.session_state.step == 3:
         highlight_function=lambda x: {"weight": 3, "color": "#e30613", "fillOpacity": 0.8},
         tooltip=folium.GeoJsonTooltip(fields=["id_manzana_unif", "uso_pot_simplificado"], aliases=["ID Manzana:", "Uso POT:"])
     ).add_to(mapa_manzanas)
-
+    
     mapa_manzanas.fit_bounds(folium.GeoJson(manzanas_localidad_sel).get_bounds())
 
-    # 5. Capturar la Interacción del Usuario
-    map_data = st_folium(
-        mapa_manzanas,
-        width=700,
-        height=500,
-        returned_objects=["last_object_clicked"],
+    # 5. Inyectar JavaScript para Capturar el Tooltip
+    mapa_manzanas.add_child(folium.Element(
+        """
+        <script>
+        map.on('popupopen', function (e) {
+            var feature = e.popup._source.feature;
+            var id_manzana = feature.properties.id_manzana_unif;
+            // Send id_manzana to Streamlit
+            Streamlit.setComponentValue(id_manzana);
+        });
+        </script>
+        """
+    ))
+
+    # 6. Renderizar el Mapa con Streamlit
+    id_manzana_clic = components.html(
+        f"""
+        <div id="mapid" style="width: 700px; height: 500px;"></div>
+        <script>
+            var map = L.map('mapid').setView([{center[0]}, {center[1]}], 12);
+
+            L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors'
+            }}).addTo(map);
+        </script>
+        """,
+        height=500, width=700, scrolling=False,
     )
 
-    # 6. Mostrar Información y Confirmar la Selección
-    if map_data and map_data.get("last_object_clicked"):
-        props = map_data["last_object_clicked"].get("properties", {})
-        st.session_state.manzana_clic = props.get("id_manzana_unif")
-        st.write("props", props) #show properties
+    # 7. Almacenar la ID de la manzana
+    st.session_state.manzana_clic = id_manzana_clic
 
+    # 8. Mostrar Información y Confirmar la Selección
     if "manzana_clic" in st.session_state and st.session_state.manzana_clic:
         st.text_input("✅ Manzana seleccionada (ID):", value=st.session_state.manzana_clic, disabled=True)
         if st.button("✅ Confirmar Manzana y Continuar"):
@@ -242,7 +263,7 @@ elif st.session_state.step == 3:
     else:
         st.info("Haz clic en una manzana del mapa para empezar.")
 
-    # 7. Botones de Navegación
+    # 9. Botones de Navegación
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔙 Volver a Selección de Localidad"):
