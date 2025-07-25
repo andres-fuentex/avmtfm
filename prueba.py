@@ -91,7 +91,7 @@ if st.session_state.step == 1:
             st.rerun()
     else:
         st.error("❌ Error al cargar los datasets. Por favor, revise las URLs o la conexión a Internet.")
-        # --- Bloque 2: Selección de Localidad ---
+# --- Bloque 2: Selección de Localidad ---
 elif st.session_state.step == 2:
     st.header("🌆 Selección de Localidad")
     st.markdown("Haz clic en la localidad que te interesa:")
@@ -123,10 +123,14 @@ elif st.session_state.step == 2:
 
     map_data = st_folium(mapa, width=700, height=500, returned_objects=["last_object_clicked"])
 
+    # Depuración: Mostrar el contenido de map_data
+    st.write("Contenido de map_data:", map_data)
+
     # Almacenar la localidad clicada en el estado de la sesión
     if map_data and map_data.get("last_object_clicked"):
         clicked = map_data["last_object_clicked"]
         st.session_state.localidad_clic = clicked.get("properties", {}).get("nombre_localidad")
+        st.write("Localidad clicada:", st.session_state.localidad_clic)  # Depuración
 
     # Mostrar la localidad seleccionada y el botón de confirmar
     if "localidad_clic" in st.session_state and st.session_state.localidad_clic:
