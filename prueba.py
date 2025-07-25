@@ -746,7 +746,7 @@ elif st.session_state.step == 7:
 
     buffer_manzanas = BytesIO()
 # Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
-    st.plotly_chart(fig_final, use_container_width=True)
+    #st.plotly_chart(fig_final, use_container_width=True)
     st.session_state.buffer_manzanas = buffer_manzanas
 
     # --- Generación del Informe ---
