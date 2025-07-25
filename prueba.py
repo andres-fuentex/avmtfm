@@ -4,9 +4,15 @@ import requests
 import folium
 from streamlit_folium import st_folium
 from shapely.geometry import Point
+import plotly.express as px
+import plotly.graph_objects as go
+import plotly.io as pio
+from io import BytesIO
+import base64
 import time
-import json  # Asegúrate de que json esté importado
+import json
 
+# --- Configuración de la Página ---
 st.set_page_config(page_title="AVM Bogotá APP", page_icon="🏠", layout="centered")
 st.title("🏠 AVM Bogotá - Análisis de Manzanas")
 
@@ -47,10 +53,10 @@ def cargar_datasets():
             except requests.exceptions.RequestException as e:
                 st.warning(f"Intento {attempt + 1}/{max_retries} fallido al cargar {nombre}: {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
+                    time.sleep(retry_delay)  # Esperar antes de reintentar
                 else:
                     st.error(f"Error al cargar {nombre} después de {max_retries} intentos: {e}")
-                    return None
+                    return None  # Detener la carga si no se puede descargar después de varios intentos
             except json.JSONDecodeError as e:
                 st.error(f"Error al decodificar JSON para {nombre}: {e}. Detalle: {e}")
                 return None # No reintentar si el problema es el JSON
@@ -60,4 +66,28 @@ def cargar_datasets():
 
     progress_bar.empty()
     return dataframes
-     
+
+# --- Control de flujo ---
+if "step" not in st.session_state:
+    st.session_state.step = 1
+
+# --- Bloque 1: Carga de datos ---
+if st.session_state.step == 1:
+    st.markdown(
+        """
+        Bienvenido al sistema de valorización automatizada de manzanas catastrales en Bogotá.
+        """
+    )
+    with st.spinner('Cargando datasets...'):
+        dataframes = cargar_datasets()
+
+    if dataframes:  # Verificar que la carga de datos fue exitosa
+        st.success('✅ Todos los datos han sido cargados correctamente.')
+
+        if st.button("Iniciar Análisis"):
+            for nombre, df in dataframes.items():
+                st.session_state[nombre] = df
+            st.session_state.step = 2
+            st.rerun()
+    else:
+        st.error("❌ Error al cargar los datasets. Por favor, revise las URLs o la conexión a Internet.")
