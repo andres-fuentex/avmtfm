@@ -1,0 +1,11 @@
+streamlit>=1.30
+geopandas
+folium
+streamlit-folium
+contextily
+seaborn
+matplotlib
+topojson
+pandas
+shapely
+requests
