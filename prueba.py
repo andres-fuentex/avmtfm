@@ -743,11 +743,15 @@ elif st.session_state.step == 7:
         margin=dict(l=0, r=0, t=40, b=0),
         title="Manzanas seleccionadas para el informe"
     )
-
+#OJO BUFFER MANZANAS
     buffer_manzanas = BytesIO()
+
+    pio.write_image(fig_manzanas, buffer_manzanas, format='png', engine='kaleido')
+    st.session_state.buffer_manzanas = buffer_manzanas
+    #st.session_state.buffer_localidad = buffer_localidad
 # Reemplazo de fig.write_image para compatibilidad con Streamlit Cloud
     #st.plotly_chart(fig_final, use_container_width=True)
-    st.session_state.buffer_manzanas = buffer_manzanas
+    #st.session_state.buffer_manzanas = buffer_manzanas
 
     # --- Generación del Informe ---
     with st.spinner('📝 Generando informe...'):
