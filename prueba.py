@@ -167,6 +167,18 @@ elif st.session_state.step == 3:
     import geopandas as gpd
     import plotly.express as px
     import json
+    import plotly.io as pio
+    from io import BytesIO
+    import os # Import the os module
+    import psutil
+
+    if os.environ.get("STREAMLIT_RUNNING") == "true":
+    pio.kaleido.scope.chromium_args = (
+    "--headless",
+    "--no-sandbox",
+    "--single-process",
+    "--disable-gpu",
+    )
 
     localidades = st.session_state.localidades
     areas = st.session_state.areas
@@ -199,7 +211,7 @@ elif st.session_state.step == 3:
 
     # Guardar imagen del mapa de localidad para el informe
     buffer_localidad = BytesIO()
-    pio.write_image(fig_localidad, buffer_localidad, format='png', engine="kaleido")
+    pio.write_image(fig_localidad, buffer_localidad, format='png', engine='kaleido')
     st.session_state.buffer_localidad = buffer_localidad
 
     # --- Preparación de manzanas + colores ---
@@ -262,6 +274,9 @@ elif st.session_state.step == 3:
             <p><b>🔎 Código de la manzana seleccionada (¡copia este valor!):</b></p>
             <input type="text" id="selected_id_input" value="" style="width: 100%; padding: 5px;" readonly>
 
+            <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+
             <script>
                 const map = L.map('map').setView([{center['lat']}, {center['lon']}], 13);
                 L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
@@ -316,26 +331,26 @@ elif st.session_state.step == 3:
         """, height=620)
 
         # Confirmación manual (el usuario copia el valor)
-        manzana_input = st.text_input("✅ Pega aquí el código de la manzana seleccionada para confirmar:")
+    manzana_input = st.text_input("✅ Pega aquí el código de la manzana seleccionada para confirmar:")
 
-        if st.button("✅ Confirmar Manzana Seleccionada"):
-            if manzana_input:
-                st.session_state.manzana_sel = manzana_input
-                st.session_state.manzanas_localidad_sel = manzanas_sel
-                st.session_state.step = 4
-                st.rerun()
-            else:
-                st.warning("Debes pegar el código de la manzana seleccionada.")
+    if st.button("✅ Confirmar Manzana Seleccionada"):
+        if manzana_input:
+            st.session_state.manzana_sel = manzana_input
+            st.session_state.manzanas_localidad_sel = manzanas_sel
+            st.session_state.step = 4
+            st.rerun()
+        else:
+            st.warning("Debes pegar el código de la manzana seleccionada.")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔙 Volver a Selección de Localidad"):
-                st.session_state.step = 2
-                st.rerun()
-        with col2:
-            if st.button("🔄 Volver al Inicio"):
-                st.session_state.step = 1
-                st.rerun()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔙 Volver a Selección de Localidad"):
+            st.session_state.step = 2
+            st.rerun()
+    with col2:
+        if st.button("🔄 Volver al Inicio"):
+            st.session_state.step = 1
+            st.rerun()
 ### OJO CON ESTE CAMBIO
         st.session_state.manzanas_localidad_sel = manzanas_sel
         st.session_state.color_map = color_map
@@ -343,4 +358,3 @@ elif st.session_state.step == 3:
 def hexToRgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-
