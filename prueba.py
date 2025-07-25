@@ -151,17 +151,20 @@ elif st.session_state.step == 2:
 # --- Bloque 3: Selección de Manzana ---
 
 # --- Bloque 3: Selección de Manzana con Copia Manual (Simplificado para Depuración) ---
+# --- Bloque 3: Selección de Manzana con Copia Manual (Simplificado para Depuración) ---
 elif st.session_state.step == 3:
     st.subheader(f"🏘️ Análisis y Selección de Manzana en {st.session_state.localidad_sel}")
 
     localidades = st.session_state.localidades
-    areas = st.session_state.areas
     manzanas = st.session_state.manzanas
-
     localidad_sel = st.session_state.localidad_sel
-    cod_localidad = localidades[localidades["nombre_localidad"] == localidad_sel]["num_localidad"].values[0]
 
-    # --- Preparación de manzanas ---
+    # 1. Filtrar Manzanas por Localidad
+    cod_localidad_series = localidades[localidades["nombre_localidad"] == localidad_sel]["num_localidad"]
+    if cod_localidad_series.empty:
+        st.error(f"No se pudo encontrar el código para la localidad '{localidad_sel}'.")
+        st.stop()
+    cod_localidad = cod_localidad_series.values[0]
     manzanas_sel = manzanas[manzanas["num_localidad"] == cod_localidad].copy()
 
     if manzanas_sel.empty:
@@ -180,18 +183,14 @@ elif st.session_state.step == 3:
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
 
         <script>
-            alert("Leaflet cargado!"); // **Añadido: Comprobar Leaflet**
-
             var map = L.map('map').setView([{center['lat']}, {center['lon']}], 13);
-            L.tileLayer('https://a.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {{
                 maxZoom: 18,
-                attribution: '© OpenStreetMap'
+                attribution: '© OpenStreetMap contributors'
             }}).addTo(map);
 
-            alert("geojson: " + '{geojson_text}'); // **Añadido: GeoJSON**
-            
             L.geoJSON({geojson_text}).addTo(map);
-            map.fitBounds(L.geoJSON({geojson_text}).getBounds());
+
         </script>
     """, height=620)
 
