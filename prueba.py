@@ -627,3 +627,79 @@ elif st.session_state.step == 5:
         if st.button("➡️ Continuar al Análisis de Seguridad"):
             st.session_state.step = 6
             st.rerun()
+
+    # BLOQUE 6
+elif st.session_state.step == 6:
+    st.subheader("🔎 Contexto de Seguridad por Localidad")
+    import plotly.express as px
+    from io import BytesIO
+    import plotly.io as pio
+
+    localidades = st.session_state.localidades
+    manzana_sel = st.session_state.manzanas_localidad_sel[
+        st.session_state.manzanas_localidad_sel["id_manzana_unif"] == st.session_state.manzana_sel
+    ]
+
+    if manzana_sel.empty:
+        st.warning("⚠️ No se encontró información de la manzana seleccionada.")
+        if st.button("🔙 Volver al Bloque Anterior"):
+            st.session_state.step = 5
+            st.rerun()
+    else:
+        cod_loc = manzana_sel["num_localidad"].values[0]
+
+        df_seguridad = localidades[["nombre_localidad", "num_localidad", "cantidad_delitos", "nivel_riesgo_delictivo"]].copy()
+        df_seguridad["es_localidad_actual"] = df_seguridad["num_localidad"] == cod_loc
+        df_seguridad["etiqueta"] = df_seguridad.apply(
+            lambda row: row["nivel_riesgo_delictivo"] if row["es_localidad_actual"] else "", axis=1
+        )
+        df_seguridad.sort_values("cantidad_delitos", ascending=True, inplace=True)
+
+        fig = px.bar(
+            df_seguridad,
+            x="cantidad_delitos",
+            y="nombre_localidad",
+            orientation="h",
+            color="es_localidad_actual",
+            color_discrete_map={True: "darkgreen", False: "rgba(0,100,0,0.3)"},
+            text="etiqueta"
+        )
+
+        fig.update_traces(textposition="outside")
+        fig.update_layout(
+            title="Contexto de seguridad por localidad\nFuente: Secretaría Distrital de Seguridad y Convivencia",
+            xaxis_title="Cantidad de delitos",
+            yaxis_title=" ",
+            showlegend=False,
+            template="simple_white",
+            margin=dict(l=0, r=0, t=40, b=0)
+        )
+        fig.update_yaxes(categoryorder="total ascending")
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.session_state.buffer_seguridad = BytesIO()
+        pio.write_image(fig, st.session_state.buffer_seguridad, format='png') # Correcto: Guarda la figura en el buffer
+        st.session_state.df_seguridad = df_seguridad
+
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("🔙 Volver al Análisis Comparativo"):
+                st.session_state.step = 5
+                st.rerun()
+        with col2:
+            if st.button("➡️ Finalizar y Descargar Informe"):
+                st.session_state.step = 7
+                st.rerun()
+        with col3:
+            if st.button("🔄 Reiniciar App"):
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                st.session_state.step = 1
+                st.rerun()
+
+        if "nombre_localidad" not in st.session_state:
+            cod_localidad = manzana_sel["num_localidad"].values[0]
+            st.session_state.nombre_localidad = st.session_state.localidades.loc[
+            st.session_state.localidades["num_localidad"] == cod_localidad, "nombre_localidad"
+            ].values[0]
