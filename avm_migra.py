@@ -52,19 +52,12 @@ def cargar_datasets():
     Utiliza archivos TopoJSON para una transferencia de datos más rápida y eficiente,
     y los convierte a GeoDataFrames para su uso en la aplicación.
     """
-    # En la mayoría de los datasets utilizamos TopoJSON para reducir el tamaño de
-    # transferencia.  Sin embargo, algunos como 'transporte' y 'colegios'
-    # contienen geometrías multipunto que no se convierten bien desde
-    # TopoJSON en este entorno.  Para ellos usamos directamente los
-    # archivos GeoJSON.
     datasets = {
         "localidades": "https://github.com/andres-fuentex/tfm-avm-bogota/raw/main/datos_visualizacion/datos_geograficos_topo/dim_localidad.json",
-        "areas":       "https://github.com/andres-fuentex/tfm-avm-bogota/raw/main/datos_visualizacion/datos_geograficos_topo/dim_area.json",
-        "manzanas":    "https://github.com/andres-fuentex/tfm-avm-bogota/raw/main/datos_visualizacion/datos_geograficos_topo/tabla_hechos.json",
-        # Para 'transporte' usamos la versión GeoJSON (no TopoJSON)
-        "transporte":  "https://github.com/andres-fuentex/tfm-avm-bogota/raw/main/datos_visualizacion/datos_geograficos_geo/dim_transporte.geojson",
-        # Para 'colegios' también usamos la versión GeoJSON
-        "colegios":    "https://github.com/andres-fuentex/tfm-avm-bogota/raw/main/datos_visualizacion/datos_geograficos_geo/dim_colegios.geojson"
+        "areas": "https://github.com/andres-fuentex/tfm-avm-bogota/raw/main/datos_visualizacion/datos_geograficos_topo/dim_area.json",
+        "manzanas": "https://github.com/andres-fuentex/tfm-avm-bogota/raw/main/datos_visualizacion/datos_geograficos_topo/tabla_hechos.json",
+        "transporte": "https://github.com/andres-fuentex/tfm-avm-bogota/raw/main/datos_visualizacion/datos_geograficos_topo/dim_transporte.json",
+        "colegios": "https://github.com/andres-fuentex/tfm-avm-bogota/raw/main/datos_visualizacion/datos_geograficos_topo/dim_colegios.json"
     }
 
     dataframes = {}
@@ -74,30 +67,21 @@ def cargar_datasets():
     for idx, (nombre, url) in enumerate(datasets.items(), start=1):
         progress_text = f"Cargando {nombre} ({idx}/{total})..."
         progress_bar.progress(int((idx / total) * 100), text=progress_text)
-
+        
         try:
-            # Descargar el archivo (TopoJSON o GeoJSON) usando requests
+            # 1. Descargar el archivo TopoJSON usando requests
             response = requests.get(url)
-            response.raise_for_status()
-
-            if nombre in ("transporte", "colegios"):
-                # Para estos casos leemos directamente el GeoJSON con GeoPandas.
-                # Usamos BytesIO para que gpd.read_file acepte el contenido binario.
-                from io import BytesIO
-                gdf = gpd.read_file(BytesIO(response.content))
-            else:
-                # Para los demás, utilizamos TopoJSON para reducir tamaño de descarga.
-                topo_data = response.json()
-                layer_name = list(topo_data['objects'].keys())[0]
-                # Intento principal: Topology.to_gdf()
-                try:
-                    topology = tp.Topology(topo_data, object_name=layer_name)
-                    gdf = topology.to_gdf()
-                except Exception:
-                    # Intento alternativo: método from_feature() para compatibilidad
-                    gdf = tp.GeoDataFrame.from_feature(topo_data, layer_name)
-
-            # Asignar un CRS por defecto si no se infiere correctamente (WGS84)
+            response.raise_for_status()  # Lanza un error si la descarga falla
+            
+            # 2. Parsear el contenido a un diccionario de Python
+            topo_data = response.json()
+            
+            # 3. Convertir el objeto TopoJSON a un GeoDataFrame
+            #    Extraemos el nombre de la capa principal del archivo.
+            layer_name = list(topo_data['objects'].keys())[0]
+            gdf = tp.GeoDataFrame.from_feature(topo_data, layer_name)
+            
+            # Asignar un CRS si no se infiere correctamente (WGS84 es estándar)
             if gdf.crs is None:
                 gdf.set_crs(epsg=4326, inplace=True)
 
@@ -105,7 +89,7 @@ def cargar_datasets():
 
         except requests.exceptions.RequestException as e:
             st.error(f"Error de red al cargar '{nombre}': {e}")
-            return None  # Detiene la ejecución si un archivo no se puede descargar
+            return None # Detiene la ejecución si un archivo no se puede descargar
         except Exception as e:
             st.error(f"Error al procesar el archivo '{nombre}': {e}")
             return None
@@ -180,14 +164,21 @@ elif st.session_state.step == 2:
     ).add_to(mapa)
 
     # --- Renderizado del Mapa y Captura de la Interacción ---
-    # Pedimos que nos devuelva las propiedades del objeto clickeado
-    map_data = st_folium(mapa, width=700, height=500, returned_objects=["last_object_clicked_properties"])
+    # Indicamos a streamlit_folium que devuelva el último objeto clicado.
+    map_data = st_folium(
+        mapa,
+        width=700,
+        height=500,
+        returned_objects=["last_object_clicked"],
+    )
 
     # --- Lógica de Selección y Confirmación ---
     # Obtenemos directamente las propiedades del polígono en el que se hizo clic
-    if map_data and map_data.get("last_object_clicked_properties"):
-        clicked_localidad_name = map_data["last_object_clicked_properties"].get("nombre_localidad")
-        st.session_state.localidad_clic = clicked_localidad_name
+    if map_data and map_data.get("last_object_clicked"):
+        props = map_data["last_object_clicked"].get("properties", {})
+        clicked_localidad_name = props.get("nombre_localidad")
+        if clicked_localidad_name:
+            st.session_state.localidad_clic = clicked_localidad_name
 
     # Si se ha seleccionado una localidad, mostrarla y permitir la confirmación
     if "localidad_clic" in st.session_state:
@@ -281,13 +272,21 @@ elif st.session_state.step == 3:
         mapa_manzanas.fit_bounds(geo_manzanas.get_bounds())
 
         # --- 3. Renderizado y Captura del Clic ---
-        map_data = st_folium(mapa_manzanas, width=700, height=500, returned_objects=["last_object_clicked_properties"])
+        # Solicitamos al componente que nos devuelva el último objeto clicado.
+        map_data = st_folium(
+            mapa_manzanas,
+            width=700,
+            height=500,
+            returned_objects=["last_object_clicked"],
+        )
 
         # --- 4. Lógica de Confirmación ---
-        if map_data and map_data.get("last_object_clicked_properties"):
-            manzana_clic_id = map_data["last_object_clicked_properties"].get("id_manzana_unif")
+        if map_data and map_data.get("last_object_clicked"):
+            props = map_data["last_object_clicked"].get("properties", {})
+            manzana_clic_id = props.get("id_manzana_unif")
             # Guardar la selección del clic en el estado de la sesión
-            st.session_state.manzana_clic = manzana_clic_id
+            if manzana_clic_id:
+                st.session_state.manzana_clic = manzana_clic_id
 
         # Mostrar la selección y el botón de confirmar
         if "manzana_clic" in st.session_state:
