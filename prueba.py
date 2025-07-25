@@ -162,7 +162,9 @@ elif st.session_state.step == 3:
     localidades = st.session_state.localidades
     areas = st.session_state.areas
     manzanas = st.session_state.manzanas
+
     localidad_sel = st.session_state.localidad_sel
+    cod_localidad = localidades[localidades["nombre_localidad"] == localidad_sel]["num_localidad"].values[0]
 
     # --- Primer mapa (Plotly): Localidad resaltada ---
     st.markdown("### 🗺️ Localidad Seleccionada (Mapa de Referencia)")
@@ -186,7 +188,7 @@ elif st.session_state.step == 3:
 
     # Guardar imagen del mapa de localidad para el informe
     buffer_localidad = BytesIO()
-    pio.write_image(fig_localidad, buffer_localidad, format='png')
+    pio.write_image(fig_localidad, buffer_localidad, format='png', engine="kaleido")
     st.session_state.buffer_localidad = buffer_localidad
 
     # --- Preparación de manzanas + colores ---
