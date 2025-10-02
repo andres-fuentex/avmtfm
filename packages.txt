@@ -10,4 +10,3 @@ libasound2
 xvfb
 chromium
 python3-pip
-python3-gdal
